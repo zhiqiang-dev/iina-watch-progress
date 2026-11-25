@@ -24,6 +24,8 @@ function runtime(options: { loadEvents?: boolean } = {}) {
   const globalTimers: (() => void)[] = [];
   let requestDepth = 0;
   const ticks: (() => void)[] = [];
+  const autosaves = new Map<string, { callback: () => void; ms: number }>();
+  let nextAutosave = 0, writes = 0;
   const commands: unknown[][] = [];
   const plays: number[] = [];
   const errors: unknown[] = [];
@@ -45,7 +47,7 @@ function runtime(options: { loadEvents?: boolean } = {}) {
   const fileAPI = {
     exists: (path: string) => path.startsWith("/Course/") || files.has(path),
     read: (path: string) => files.get(path),
-    write: (path: string, text: string) => files.set(path, text),
+    write: (path: string, text: string) => { writes++; files.set(path, text); },
     list: (path: string) => { scans.push(path); return ["01.mp4", "02.mp4", "03.mp4"].map(filename => ({ filename, path: `/${filename}`, isDir: false })); },
     showInFinder() {},
   };
@@ -56,7 +58,9 @@ function runtime(options: { loadEvents?: boolean } = {}) {
         if (requestDepth > 0) throw new Error("Unsafe synchronous cross-context reply");
         childHandlers.get(name)?.(clone(data));
       },
-    } }, setInterval: () => "global-timer",
+    } }, setInterval: (callback: () => void, ms: number) => {
+      const id = `global-timer-${++nextAutosave}`; autosaves.set(id, { callback, ms }); return id;
+    }, clearInterval: (id: string) => autosaves.delete(id),
     setTimeout: (callback: () => void) => { globalTimers.push(callback); return "global-timeout"; },
   });
   const ui = {
@@ -111,6 +115,8 @@ function runtime(options: { loadEvents?: boolean } = {}) {
     fire("iina.file-loaded");
   }
   return { files, properties, fire, hooks, errors, plays, commands, viewMessages, scans,
+    autosaves, writes: () => writes,
+    checkpoint: () => { for (const { callback } of autosaves.values()) callback(); deliver(); },
     tick: () => { ticks.forEach(tick => tick()); deliver(); },
     runTimers: () => { timers.splice(0).forEach(timer => timer()); deliver(); },
     action: (data: unknown) => { viewHandlers.get(MSG.action)?.(data); deliver(); },
@@ -122,6 +128,27 @@ function runtime(options: { loadEvents?: boolean } = {}) {
 }
 
 describe("bundled IINA main/global integration", () => {
+  it("changes the global checkpoint interval without extra idle writes and still saves pauses immediately", () => {
+    const app = runtime();
+    expect([...app.autosaves.values()].map(timer => timer.ms)).toEqual([5000]);
+    app.action({ type: "save-interval", value: 30 });
+    expect([...app.autosaves.values()].map(timer => timer.ms)).toEqual([30000]);
+    expect(app.state().settings.saveIntervalSeconds).toBe(30);
+    const saved = app.writes();
+    app.action({ type: "save-interval", value: 30 });
+    app.action({ type: "save-interval", value: 1 });
+    app.checkpoint();
+    expect(app.writes()).toBe(saved);
+    app.properties["time-pos"] = 21; app.tick();
+    expect(app.writes()).toBe(saved);
+    app.properties.pause = true; app.fire("mpv.pause.changed");
+    expect(app.writes()).toBe(saved + 1);
+    const snapshot = decodeSnapshot([...app.files.values()].at(-1)!);
+    expect(snapshot.payload.settings.saveIntervalSeconds).toBe(30);
+    expect(snapshot.payload.videos[mediaId("/Course/01.mp4")]?.position).toBe(21);
+    app.checkpoint(); expect(app.writes()).toBe(saved + 1);
+    expect(app.errors).toEqual([]);
+  });
   it("registers messages after loadFile clears listeners and scans all siblings", () => {
     const app = runtime();
     expect(app.state().items).toHaveLength(3);

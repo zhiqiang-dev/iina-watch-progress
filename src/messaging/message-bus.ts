@@ -35,7 +35,7 @@ export type UIAction =
   | { type: "play" | "continue" | "complete" | "reset" | "toggle-playback"; id: string }
   | { type: "refresh" | "detach" | "reveal-data" }
   | { type: "folder"; path: string }
-  | { type: "threshold"; value: number };
+  | { type: "threshold" | "save-interval"; value: number };
 
 export const MSG = {
   sync: "wp:sync", begin: "wp:begin", sample: "wp:sample", end: "wp:end",

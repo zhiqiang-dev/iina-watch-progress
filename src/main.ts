@@ -199,6 +199,7 @@ function action(value: unknown): void {
           globalAPI.postMessage(MSG.mark, { id: value.id, completed: value.type === "complete" });
         break;
       case "threshold": globalAPI.postMessage(MSG.settings, { threshold: value.value }); break;
+      case "save-interval": globalAPI.postMessage(MSG.settings, { saveIntervalSeconds: value.value }); break;
       case "folder":
         if (typeof value.path === "string" && folders.some(folder => folder.path === value.path)) {
           selectedFolder = value.path;

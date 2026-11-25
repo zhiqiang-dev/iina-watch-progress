@@ -6,6 +6,7 @@ import { MSG } from "./messaging/message-bus";
 import { object } from "./storage/migration";
 import { DeferredGlobalMessages, onNativeMessage } from "./messaging/native-messages";
 import { mergeRecordMessages } from "./messaging/record-updates";
+import { DEFAULT_SAVE_INTERVAL } from "./models/settings";
 
 const globalAPI = iina.global;
 const outbound = new DeferredGlobalMessages(
@@ -46,17 +47,25 @@ on(MSG.mark, (data, player) => {
     coordinator.mark(player, data.id, data.completed, Date.now());
 });
 on(MSG.settings, data => {
-  if (repository.setThreshold(data.threshold)) {
+  const intervalChanged = repository.setSaveInterval(data.saveIntervalSeconds);
+  const thresholdChanged = repository.setThreshold(data.threshold);
+  if (intervalChanged || thresholdChanged) {
     repository.flush(Date.now());
     coordinator.publishAll();
+    if (intervalChanged) scheduleAutosave();
   }
 });
 on(MSG.disconnect, (_data, player) => coordinator.disconnect(player, Date.now()));
 
-setInterval(() => {
-  if (repository.storage.state.dirty) {
-    repository.flush(Date.now());
-    coordinator.publishAll();
-  }
-}, 5000);
+let autosaveTimer: string | undefined;
+function scheduleAutosave(): void {
+  if (autosaveTimer) clearInterval(autosaveTimer);
+  autosaveTimer = setInterval(() => {
+    if (repository.storage.state.dirty) {
+      repository.flush(Date.now());
+      coordinator.publishAll();
+    }
+  }, (repository.data.settings.saveIntervalSeconds ?? DEFAULT_SAVE_INTERVAL) * 1000);
+}
+scheduleAutosave();
 iina.console.log("Watch Progress: global storage ready");

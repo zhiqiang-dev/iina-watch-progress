@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, validThreshold, type Settings } from "../models/settings";
+import { DEFAULT_SETTINGS, validSaveInterval, validThreshold, type Settings } from "../models/settings";
 import type { VideoRecord } from "../models/video-record";
 import { fileName, folderPath, mediaId, normalizePath } from "../core/media-identity";
 
@@ -59,7 +59,8 @@ export function decodeSnapshot(text: string): Snapshot {
   if (value.schemaVersion !== SCHEMA_VERSION || !Number.isSafeInteger(value.revision) ||
       !nonnegative(value.revision) || !nonnegative(value.savedAt) || !object(value.payload) ||
       !object(value.payload.videos) || !object(value.payload.settings) ||
-      !validThreshold(value.payload.settings.completionThreshold)) throw new Error("快照字段无效");
+      !validThreshold(value.payload.settings.completionThreshold) ||
+      (value.payload.settings.saveIntervalSeconds !== undefined && !validSaveInterval(value.payload.settings.saveIntervalSeconds))) throw new Error("快照字段无效");
   const body = { schemaVersion: value.schemaVersion, revision: value.revision, savedAt: value.savedAt, payload: value.payload };
   if (value.checksum !== checksum(JSON.stringify(body))) throw new Error("快照校验失败");
   for (const [id, record] of Object.entries(value.payload.videos)) {

@@ -1,6 +1,7 @@
 import { MSG, type ViewState, type ViewSnapshot, type UIAction } from "../messaging/message-bus";
 import { createRecord, markCompleted, resetRecord, updateProgress } from "../core/progress-engine";
 import { mediaId } from "../core/media-identity";
+import { DEFAULT_SETTINGS } from "../models/settings";
 
 const folder = "/视频课程";
 const names = ["课程导论", "基础理论", "核心知识", "专题讲解", "案例分析", "综合应用", "强化练习", "课程总结"];
@@ -24,7 +25,7 @@ const videos = Array.from({ length: count }, (_, index) => {
 const previewState: ViewSnapshot = { kind: "snapshot", scope: 1, paused: !params.has("live"), videos, items: videos.map((record, playlistIndex) => ({ id: record.id, path: record.filePath, playlistIndex })),
   folders: count ? [{ path: folder, name: "视频课程" }] : [], selectedFolder: count ? folder : undefined,
   activeId: count ? mediaId(`${folder}/04. 专题讲解.mp4`) : undefined,
-  settings: { completionThreshold: 0.95 }, storage: { readOnly: false, dirty: false, recovered: false, lastSavedAt: Date.now() } };
+  settings: { ...DEFAULT_SETTINGS }, storage: { readOnly: false, dirty: false, recovered: false, lastSavedAt: Date.now() } };
 let render: ((state: ViewState) => void) | undefined;
 function patch(changes: typeof videos = []): void {
   render?.({ kind: "patch", scope: 1, videos: changes, settings: previewState.settings, storage: previewState.storage,
@@ -53,6 +54,7 @@ window.iina = {
         patch([previewState.videos[index]!]);
       }
     } else if (action.type === "threshold") { previewState.settings.completionThreshold = action.value; patch(); }
+    else if (action.type === "save-interval") { previewState.settings.saveIntervalSeconds = action.value; patch(); }
     else if (action.type === "refresh") render?.(previewState);
   },
 };

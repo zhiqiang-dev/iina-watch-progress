@@ -1,7 +1,7 @@
 {
   "name": "IINA Watch Progress",
   "identifier": "io.iina.watch-progress",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "本地视频观看记录、文件夹进度和继续观看",
   "author": { "name": "IINA Watch Progress contributors" },
   "entry": "main.js",

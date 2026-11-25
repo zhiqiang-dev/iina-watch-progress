@@ -3,7 +3,7 @@ import { createRecord, markCompleted, resetRecord } from "../core/progress-engin
 import type { JsonStorage } from "./json-storage";
 import type { RecordsPayload } from "./migration";
 import { mediaId } from "../core/media-identity";
-import { validThreshold } from "../models/settings";
+import { DEFAULT_SAVE_INTERVAL, validSaveInterval, validThreshold } from "../models/settings";
 
 export class Repository {
   readonly data: RecordsPayload;
@@ -33,6 +33,13 @@ export class Repository {
     if (!validThreshold(threshold) || this.storage.state.readOnly) return false;
     if (this.data.settings.completionThreshold === threshold) return false;
     this.data.settings.completionThreshold = threshold;
+    this.storage.state.dirty = true;
+    return true;
+  }
+  setSaveInterval(seconds: unknown): boolean {
+    if (!validSaveInterval(seconds) || this.storage.state.readOnly) return false;
+    if ((this.data.settings.saveIntervalSeconds ?? DEFAULT_SAVE_INTERVAL) === seconds) return false;
+    this.data.settings.saveIntervalSeconds = seconds;
     this.storage.state.dirty = true;
     return true;
   }

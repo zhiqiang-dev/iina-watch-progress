@@ -1,6 +1,7 @@
 import { MSG, type ViewState, type ViewSnapshot, type UIAction } from "../../messaging/message-bus";
 import { VideoListModel, type VideoFilter, type VideoSort } from "../video-list-model";
 import { VirtualVideoList, ROW_HEIGHT, formatTime as time } from "./virtual-list";
+import { DEFAULT_SAVE_INTERVAL } from "../../models/settings";
 
 interface WebViewBridge {
   postMessage(name: string, data?: unknown): void;
@@ -50,6 +51,10 @@ function renderOverview(): void {
   const threshold = el<HTMLSelectElement>("threshold"), value = String(state.settings.completionThreshold);
   if (threshold.value !== value) threshold.value = value;
   threshold.disabled = state.storage.readOnly;
+  const interval = el<HTMLSelectElement>("save-interval"), seconds = state.settings.saveIntervalSeconds ?? DEFAULT_SAVE_INTERVAL;
+  if (interval.value !== String(seconds)) interval.value = String(seconds);
+  interval.disabled = state.storage.readOnly;
+  text("save-hint", `仅有变化时写入。暂停、切换和手动操作立即保存；异常退出可能丢失最近约 ${seconds} 秒的进度。`);
 }
 function renderListState(): void {
   const count = model.ids.length;
@@ -122,6 +127,7 @@ el("complete-selected").addEventListener("click", () => { if (selectedId) send({
 el("reset-selected").addEventListener("click", () => { if (selectedId) send({ type: "reset", id: selectedId }); });
 el("folder").addEventListener("change", event => send({ type: "folder", path: (event.target as HTMLSelectElement).value }));
 el("threshold").addEventListener("change", event => send({ type: "threshold", value: Number((event.target as HTMLSelectElement).value) }));
+el("save-interval").addEventListener("change", event => send({ type: "save-interval", value: Number((event.target as HTMLSelectElement).value) }));
 el("refresh").addEventListener("click", () => send({ type: "refresh" }));
 el("detach").addEventListener("click", () => send({ type: "detach" }));
 el("reveal-data").addEventListener("click", () => send({ type: "reveal-data" }));

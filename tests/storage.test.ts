@@ -5,6 +5,32 @@ import { checksum, decodeSnapshot, emptyPayload, encodeSnapshot } from "../src/s
 import { MemoryFiles, repository } from "./helpers";
 
 describe("verified alternating snapshots", () => {
+  it("loads legacy settings without changing the stored file and persists a chosen save interval", () => {
+    const files = new MemoryFiles(), payload = emptyPayload();
+    delete payload.settings.saveIntervalSeconds;
+    files.files.set(SNAPSHOT_PATHS[0], encodeSnapshot(payload, 1, 1));
+    const repo = repository(files);
+    expect(repo.storage.state.readOnly).toBe(false);
+    expect(repo.setSaveInterval(5)).toBe(false);
+    expect(repo.flush(2)).toBe(false); expect(files.writes).toBe(0);
+    expect(repo.setSaveInterval(30)).toBe(true); repo.flush(3);
+    expect(repository(files).data.settings.saveIntervalSeconds).toBe(30);
+    expect(repo.setSaveInterval(1)).toBe(false);
+    expect(repo.setSaveInterval(0)).toBe(false);
+    expect(repo.setSaveInterval(Infinity)).toBe(false);
+    expect(repo.setSaveInterval("15")).toBe(false);
+    expect(repo.flush(4)).toBe(false); expect(files.writes).toBe(1);
+  });
+  it("rejects invalid saved intervals and protects read-only snapshots from setting changes", () => {
+    const files = new MemoryFiles(), payload = emptyPayload();
+    payload.settings.saveIntervalSeconds = 1;
+    const invalid = encodeSnapshot(payload, 1, 1);
+    expect(() => decodeSnapshot(invalid)).toThrow("字段无效");
+    files.files.set(SNAPSHOT_PATHS[0], invalid);
+    const repo = repository(files);
+    expect(repo.setSaveInterval(30)).toBe(false); expect(repo.flush(2)).toBe(false);
+    expect(files.writes).toBe(0);
+  });
   it("avoids dirty writes when selecting the existing threshold or completing a completed file", () => {
     const files = new MemoryFiles(), repo = repository(files);
     const record = repo.ensure("/Course/01.mp4", 1); repo.mark(record.id, true, 2); repo.flush(3);

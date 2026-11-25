@@ -37,7 +37,7 @@
       <div class="list-toolbar"><span id="list-count">0 个视频</span><label><span class="sr-only">排序方式</span><select id="sort" aria-label="排序方式"><option value="name">文件名</option><option value="progress">观看进度</option><option value="recent">最近观看</option></select></label></div>
     </header>
     <div id="notice" class="notice" role="status" hidden></div>
-    <section id="list" class="video-list" role="listbox" aria-label="视频列表，使用方向键选择，回车播放" tabindex="0"><div id="list-content"></div></section>
+    <section id="list" class="video-list" role="listbox" aria-label="视频列表，使用方向键选择，回车播放，空格播放或暂停" tabindex="0"><div id="list-content"></div></section>
     <div id="empty" class="empty" hidden><svg viewBox="0 0 40 40" aria-hidden="true"><rect x="5" y="9" width="30" height="23" rx="4"/><path d="m17 16 9 5-9 5z"/></svg><strong id="empty-title">还没有视频</strong><p id="empty-description">在 IINA 中打开本地视频或文件夹，<br>观看记录会自动出现在这里。</p></div>
     <footer>
       <div id="selection" class="selection" hidden>
@@ -47,7 +47,7 @@
         <div class="selection-detail"><span id="selected-position"></span><span id="selected-source"></span></div>
         <div class="actions"><button id="play-selected">播放视频</button><button id="complete-selected">标记完成</button><button id="reset-selected" class="muted-button">重置</button></div>
       </div>
-      <details id="settings"><summary>设置与数据</summary><div class="settings-content"><label>自动完成阈值 <select id="threshold"><option value="0.8">80%</option><option value="0.85">85%</option><option value="0.9">90%</option><option value="0.95">95%</option><option value="1">100%</option></select></label><p>按历史最远播放位置判断完成。普通打开由 IINA 恢复进度；“继续观看”使用本插件的记录。</p><button id="reveal-data">在 Finder 中显示记录</button></div></details>
+      <details id="settings"><summary>设置与数据</summary><div class="settings-content"><label>自动完成阈值 <select id="threshold"><option value="0.8">80%</option><option value="0.85">85%</option><option value="0.9">90%</option><option value="0.95">95%</option><option value="1">100%</option></select></label><p>按历史最远播放位置判断完成。普通打开由 IINA 恢复进度；“继续观看”使用本插件的记录。</p><label>自动保存间隔 <select id="save-interval"><option value="5">5 秒（默认）</option><option value="15">15 秒</option><option value="30">30 秒</option><option value="60">60 秒</option></select></label><p id="save-hint">仅有变化时写入。暂停、切换和手动操作立即保存；异常退出可能丢失最近约 5 秒的进度。</p><button id="reveal-data">在 Finder 中显示记录</button></div></details>
       <div class="storage-line"><span id="storage-status" role="status">正在连接观看记录…</span><span id="preview-label" hidden>交互预览</span><span class="local-label">仅保存在本机</span></div>
     </footer>
   </main>
