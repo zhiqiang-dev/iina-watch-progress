@@ -28,6 +28,15 @@ export class VirtualVideoList {
     this.resize = new ResizeObserver(() => this.schedule()); this.resize.observe(viewport);
   }
   update(flags: PlaybackView): void { this.flags = flags; this.schedule(); }
+  scrollTo(top: number): void {
+    // Update the virtual extent before assigning scrollTop, otherwise WebKit clamps
+    // a restored position against the previous folder's shorter content.
+    this.content.style.height = `${this.model.ids.length * ROW_HEIGHT}px`;
+    this.viewport.scrollTop = Math.max(0, top); this.schedule();
+  }
+  reveal(index: number): void {
+    this.scrollTo(index * ROW_HEIGHT - (this.viewport.clientHeight - ROW_HEIGHT) / 2);
+  }
   private schedule(): void {
     if (this.frame !== undefined) return;
     this.frame = requestAnimationFrame(() => { this.frame = undefined; this.render(); });

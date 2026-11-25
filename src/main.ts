@@ -200,6 +200,9 @@ function action(value: unknown): void {
         break;
       case "threshold": globalAPI.postMessage(MSG.settings, { threshold: value.value }); break;
       case "save-interval": globalAPI.postMessage(MSG.settings, { saveIntervalSeconds: value.value }); break;
+      case "locate-current":
+        if (activePath) { selectedFolder = folderPath(activePath); syncPlaylist(); }
+        break;
       case "folder":
         if (typeof value.path === "string" && folders.some(folder => folder.path === value.path)) {
           selectedFolder = value.path;

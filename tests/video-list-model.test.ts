@@ -15,6 +15,12 @@ function reference(records: VideoRecord[], filter: VideoFilter, search: string, 
       collator.compare(a.fileName, b.fileName) || a.id.localeCompare(b.id)).map(record => record.id);
 }
 describe("incremental video list", () => {
+  it("matches multiple filename keywords in any order", () => {
+    const model = new VideoListModel();
+    const record = createRecord("/Course/058 第8章 德国教育.mp4", 1);
+    model.replace([record]); model.setQuery("all", "德国 058", "name"); expect(model.ids).toEqual([record.id]);
+    model.setQuery("all", "058 法国", "name"); expect(model.ids).toEqual([]);
+  });
   it("does not fully sort the folder on normal progress samples", () => {
     const model = new VideoListModel(); model.replace(fixture(1000));
     const ids = [...model.ids], sorts = model.fullSorts;

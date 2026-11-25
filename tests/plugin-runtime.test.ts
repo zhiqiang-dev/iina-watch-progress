@@ -123,11 +123,19 @@ function runtime(options: { loadEvents?: boolean } = {}) {
     ready,
     receive: (wire: unknown) => childHandlers.get(MSG.records)?.(wire),
     state: () => view!,
+    setPlaylist: (paths: string[]) => { playlist = paths.map(filename => ({ filename })); },
     reorder: () => { playlist = [...playlist].reverse(); },
   };
 }
 
 describe("bundled IINA main/global integration", () => {
+  it("locates the active file's folder without playing or seeking", () => {
+    const app = runtime(); app.setPlaylist(["/Course/01.mp4", "/Other/01.mp4"]);
+    app.fire("mpv.playlist.changed"); app.runTimers();
+    app.action({ type: "folder", path: "/Other" }); expect(app.state().selectedFolder).toBe("/Other");
+    app.action({ type: "locate-current" }); expect(app.state().selectedFolder).toBe("/Course");
+    expect(app.state().activeId).toBe(mediaId("/Course/01.mp4")); expect(app.commands).toEqual([]); expect(app.plays).toEqual([]);
+  });
   it("changes the global checkpoint interval without extra idle writes and still saves pauses immediately", () => {
     const app = runtime();
     expect([...app.autosaves.values()].map(timer => timer.ms)).toEqual([5000]);

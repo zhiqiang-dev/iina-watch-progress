@@ -57,7 +57,8 @@ export class VideoListModel {
     }
   }
   private matches(record: VideoRecord): boolean {
-    return (this.filter === "all" || record.status === this.filter) && (!this.search || record.fileName.toLocaleLowerCase().includes(this.search));
+    return (this.filter === "all" || record.status === this.filter) &&
+      this.search.split(/\s+/).every(word => record.fileName.toLocaleLowerCase().includes(word));
   }
   private compare(a: VideoRecord, b: VideoRecord): number {
     const primary = this.sort === "progress" ? b.progress - a.progress : this.sort === "recent" ? b.lastPlayedAt - a.lastPlayedAt : 0;

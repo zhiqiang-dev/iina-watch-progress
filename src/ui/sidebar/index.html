@@ -27,7 +27,9 @@
       <div class="overall-track"><div id="overall-progress"></div></div>
       <button id="continue" class="continue-button" disabled><span aria-hidden="true">▶</span><span id="continue-label">继续观看</span></button>
       <div id="continue-hint" class="continue-hint">打开视频文件夹，开始记录观看进度</div>
-      <label class="search-field"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg><input id="search" type="search" placeholder="搜索视频" aria-label="搜索视频" autocomplete="off"></label>
+      <div class="current-toolbar"><span id="current-name">尚未播放视频</span><button id="locate-current" disabled>定位当前</button><button id="follow-current" aria-pressed="true" title="切换视频时自动定位；手动浏览后暂停跟随">跟随开</button></div>
+      <div id="locate-notice" class="locate-notice" role="status" hidden><span id="locate-hint"></span><button id="reveal-current">显示当前视频</button><button id="restore-query" hidden>恢复筛选</button></div>
+      <label class="search-field"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg><input id="search" type="search" placeholder="搜索文件名、编号或多个关键词" aria-label="搜索视频" autocomplete="off"></label>
       <div class="segments" role="tablist" aria-label="观看状态筛选">
         <button role="tab" data-filter="all" aria-selected="true">全部</button>
         <button role="tab" data-filter="completed" aria-selected="false">已完成</button>

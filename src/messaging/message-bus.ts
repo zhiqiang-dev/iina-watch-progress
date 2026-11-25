@@ -33,7 +33,7 @@ export interface ViewPatch extends RecordsMessage {
 export type ViewState = ViewSnapshot | ViewPatch;
 export type UIAction =
   | { type: "play" | "continue" | "complete" | "reset" | "toggle-playback"; id: string }
-  | { type: "refresh" | "detach" | "reveal-data" }
+  | { type: "refresh" | "detach" | "reveal-data" | "locate-current" }
   | { type: "folder"; path: string }
   | { type: "threshold" | "save-interval"; value: number };
 

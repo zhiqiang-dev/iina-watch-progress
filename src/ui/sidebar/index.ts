@@ -2,6 +2,7 @@ import { MSG, type ViewState, type ViewSnapshot, type UIAction } from "../../mes
 import { VideoListModel, type VideoFilter, type VideoSort } from "../video-list-model";
 import { VirtualVideoList, ROW_HEIGHT, formatTime as time } from "./virtual-list";
 import { DEFAULT_SAVE_INTERVAL } from "../../models/settings";
+import { BrowseStateStore, DEFAULT_BROWSE, captureAnchor, restoreAnchor, type BrowseState } from "../browse-state";
 
 interface WebViewBridge {
   postMessage(name: string, data?: unknown): void;
@@ -19,6 +20,43 @@ const completedCount = el("completed").firstChild!, completedTotal = el("complet
 let state: ViewSnapshot | undefined;
 let selectedId: string | undefined;
 let filter: VideoFilter = "all", search = "", sort: VideoSort = "name", folderKey = "";
+const browseStore = new BrowseStateStore((() => { try { return window.localStorage; } catch { return undefined; } })());
+let follow = true, lastActiveId: string | undefined, pendingFollow: string | undefined, locateRequested = false;
+let pendingRestore: BrowseState | undefined, rememberTimer: number | undefined;
+let locateBlocked = false, revealedQuery: { filter: VideoFilter; search: string; sort: VideoSort } | undefined;
+function rememberNow(): void {
+  if (rememberTimer !== undefined) window.clearTimeout(rememberTimer); rememberTimer = undefined;
+  if (!state?.selectedFolder || !model.total || pendingRestore) return;
+  browseStore.set(state.selectedFolder, { filter, search, sort, selectedId, follow, density: "comfortable",
+    ...captureAnchor(model.ids, list.scrollTop, ROW_HEIGHT) });
+}
+function rememberSoon(): void {
+  if (rememberTimer !== undefined) window.clearTimeout(rememberTimer);
+  rememberTimer = window.setTimeout(rememberNow, 600);
+}
+function queryControls(): void {
+  el<HTMLInputElement>("search").value = search; el<HTMLSelectElement>("sort").value = sort;
+  for (const button of document.querySelectorAll<HTMLElement>("[data-filter]")) button.setAttribute("aria-selected", String(button.dataset.filter === filter));
+}
+function renderNavigation(): void {
+  const active = state?.activeId ? model.records.get(state.activeId) : undefined;
+  text("current-name", active ? `${state?.paused ? "已暂停" : "正在播放"} · ${active.fileName}` : state?.activeId ? "当前视频在其他文件夹" : "尚未播放视频");
+  el("current-name").title = active?.filePath ?? ""; disable("locate-current", !state?.activeId);
+  text("follow-current", follow ? "跟随开" : "跟随关"); el("follow-current").setAttribute("aria-pressed", String(follow));
+  if (state?.activeId && model.ids.includes(state.activeId)) locateBlocked = false;
+  el("locate-notice").hidden = !locateBlocked && !revealedQuery;
+  text("locate-hint", revealedQuery ? "正在临时显示当前视频，原筛选已保留。" : "当前视频被搜索或状态筛选隐藏。");
+  el("reveal-current").hidden = !!revealedQuery; el("restore-query").hidden = !revealedQuery;
+}
+function pauseFollow(): void { follow = false; pendingFollow = undefined; renderNavigation(); rememberSoon(); }
+function locateCurrent(explicit = true): void {
+  const id = state?.activeId; if (!id) return;
+  if (explicit) follow = true;
+  if (!model.records.has(id)) { locateRequested = true; send({ type: "locate-current" }); return; }
+  const index = model.ids.indexOf(id);
+  if (index < 0) { locateBlocked = true; renderNavigation(); return; }
+  selectedId = id; virtual.reveal(index); renderSelection(); updateRows(); renderNavigation(); rememberSoon();
+}
 function send(action: UIAction): void { window.iina?.postMessage(MSG.action, action); }
 function updateRows(): void { virtual.update({ selectedId, activeId: state?.activeId, paused: state?.paused ?? true }); }
 function renderSelection(): void {
@@ -65,12 +103,21 @@ function renderListState(): void {
   updateRows(); renderSelection();
 }
 function render(next: ViewState): void {
+  let restoredFolder = false;
   if (next.kind === "patch") {
     if (!state || (next.scope !== undefined && next.scope !== state.scope)) return;
     state = { ...state, storage: next.storage, settings: next.settings, activeId: next.activeId ?? undefined, paused: next.paused, scanError: next.scanError ?? undefined };
     model.apply(next.videos);
   } else {
-    if (state?.selectedFolder !== next.selectedFolder) { selectedId = undefined; list.scrollTop = 0; }
+    if (state?.selectedFolder !== next.selectedFolder) {
+      rememberNow();
+      const saved = next.selectedFolder ? browseStore.get(next.selectedFolder) : undefined;
+      const browsing = saved ?? DEFAULT_BROWSE;
+      selectedId = browsing.selectedId; filter = browsing.filter; search = browsing.search; sort = browsing.sort; follow = browsing.follow;
+      pendingRestore = saved; restoredFolder = !!saved; pendingFollow = undefined;
+      revealedQuery = undefined; locateBlocked = false; list.scrollTop = 0;
+      model.setQuery(filter, search, sort); queryControls();
+    }
     state = next;
     const ids = new Set(next.items.map(item => item.id));
     model.replace(next.videos.filter(record => ids.has(record.id)));
@@ -85,14 +132,29 @@ function render(next: ViewState): void {
     }
     el<HTMLSelectElement>("folder").value = next.selectedFolder ?? ""; el<HTMLSelectElement>("folder").disabled = next.folders.length < 2;
   }
-  if (!selectedId || !model.records.has(selectedId)) selectedId = state.activeId && model.records.has(state.activeId) ? state.activeId : model.ids[0];
-  renderOverview(); renderListState();
+  if (model.total && (!selectedId || !model.records.has(selectedId))) selectedId = state.activeId && model.records.has(state.activeId) ? state.activeId : model.ids[0];
+  if (state.activeId && state.activeId !== lastActiveId) {
+    lastActiveId = state.activeId;
+    if (follow && !restoredFolder && !pendingRestore) pendingFollow = state.activeId;
+  }
+  renderOverview(); renderListState(); renderNavigation();
+  if (pendingRestore && model.total) { virtual.scrollTo(restoreAnchor(model.ids, pendingRestore, ROW_HEIGHT)); pendingRestore = undefined; }
+  if (locateRequested && state.activeId && model.records.has(state.activeId)) { locateRequested = false; locateCurrent(); }
+  else if (pendingFollow && model.records.has(pendingFollow)) { pendingFollow = undefined; locateCurrent(false); }
 }
-function updateQuery(): void { model.setQuery(filter, search, sort); list.scrollTop = 0; renderListState(); }
+function updateQuery(manual = true): void {
+  if (manual) { pauseFollow(); revealedQuery = undefined; }
+  model.setQuery(filter, search, sort); virtual.scrollTo(0); queryControls(); renderListState(); renderNavigation(); rememberSoon();
+}
+list.addEventListener("wheel", pauseFollow, { passive: true });
+list.addEventListener("touchmove", pauseFollow, { passive: true });
+list.addEventListener("scroll", rememberSoon, { passive: true });
+window.addEventListener("pagehide", rememberNow);
 list.addEventListener("click", event => {
   const target = event.target as HTMLElement, row = target.closest<HTMLElement>(".video-row");
   if (!row?.dataset.id) return;
   selectedId = row.dataset.id; list.focus({ preventScroll: true }); updateRows(); renderSelection();
+  rememberSoon();
   if (target.closest(".row-icon")) send({ type: "toggle-playback", id: selectedId });
 });
 list.addEventListener("dblclick", event => {
@@ -106,13 +168,14 @@ list.addEventListener("keydown", event => {
     event.preventDefault(); send({ type: event.key === " " ? "toggle-playback" : "play", id: selectedId }); return;
   }
   if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key) || !model.ids.length) return;
+  pauseFollow();
   event.preventDefault();
   const current = selectedId ? model.ids.indexOf(selectedId) : -1;
   const index = event.key === "Home" ? 0 : event.key === "End" ? model.ids.length - 1 : Math.max(0, Math.min(model.ids.length - 1, current + (event.key === "ArrowDown" ? 1 : -1)));
   selectedId = model.ids[index];
   if (index * ROW_HEIGHT < list.scrollTop) list.scrollTop = index * ROW_HEIGHT;
   else if ((index + 1) * ROW_HEIGHT > list.scrollTop + list.clientHeight) list.scrollTop = (index + 1) * ROW_HEIGHT - list.clientHeight;
-  updateRows(); renderSelection();
+  updateRows(); renderSelection(); rememberSoon();
 });
 for (const button of document.querySelectorAll<HTMLButtonElement>("[data-filter]")) button.addEventListener("click", () => {
   filter = button.dataset.filter as VideoFilter;
@@ -121,6 +184,16 @@ for (const button of document.querySelectorAll<HTMLButtonElement>("[data-filter]
 });
 el("search").addEventListener("input", event => { search = (event.target as HTMLInputElement).value; updateQuery(); });
 el("sort").addEventListener("change", event => { sort = (event.target as HTMLSelectElement).value as VideoSort; updateQuery(); });
+el("locate-current").addEventListener("click", () => locateCurrent());
+el("follow-current").addEventListener("click", () => { follow = !follow; if (follow) locateCurrent(false); renderNavigation(); rememberSoon(); });
+el("reveal-current").addEventListener("click", () => {
+  revealedQuery = { filter, search, sort }; filter = "all"; search = "";
+  updateQuery(false); locateCurrent();
+});
+el("restore-query").addEventListener("click", () => {
+  if (!revealedQuery) return;
+  ({ filter, search, sort } = revealedQuery); revealedQuery = undefined; updateQuery();
+});
 el("continue").addEventListener("click", () => { if (model.continueRecord) send({ type: "continue", id: model.continueRecord.id }); });
 el("play-selected").addEventListener("click", () => { if (selectedId) send({ type: "play", id: selectedId }); });
 el("complete-selected").addEventListener("click", () => { if (selectedId) send({ type: "complete", id: selectedId }); });

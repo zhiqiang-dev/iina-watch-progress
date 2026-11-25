@@ -10,3 +10,4 @@
 /* Keep expanded settings reachable in short standalone windows. */
 #app{overflow:hidden}
 footer{min-height:0;flex-shrink:1;overflow-y:auto}
+.current-toolbar{display:flex;gap:6px;align-items:center;margin:0 0 10px}.current-toolbar>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;color:var(--secondary)}.current-toolbar button{font-size:10px;padding:4px 6px;white-space:nowrap}.current-toolbar [aria-pressed=true]{color:var(--blue);background:var(--blue-soft);border-color:transparent}.locate-notice{display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:10px;line-height:1.5;margin-bottom:9px;color:var(--secondary)}.locate-notice button{font-size:10px;padding:3px 5px;color:var(--blue)}
