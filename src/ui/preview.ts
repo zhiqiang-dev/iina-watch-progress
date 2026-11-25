@@ -25,11 +25,12 @@ const videos = Array.from({ length: count }, (_, index) => {
 const previewState: ViewSnapshot = { kind: "snapshot", scope: 1, paused: !params.has("live"), videos, items: videos.map((record, playlistIndex) => ({ id: record.id, path: record.filePath, playlistIndex })),
   folders: count ? [{ path: folder, name: "视频课程" }] : [], selectedFolder: count ? folder : undefined,
   activeId: count ? mediaId(`${folder}/04. 专题讲解.mp4`) : undefined,
+  media: count ? { id: mediaId(`${folder}/04. 专题讲解.mp4`), width: 1920, height: 1080, codec: "h264" } : undefined,
   settings: { ...DEFAULT_SETTINGS }, storage: { readOnly: false, dirty: false, recovered: false, lastSavedAt: Date.now() } };
 let render: ((state: ViewState) => void) | undefined;
 function patch(changes: typeof videos = []): void {
   render?.({ kind: "patch", scope: 1, videos: changes, settings: previewState.settings, storage: previewState.storage,
-    activeId: previewState.activeId ?? null, paused: previewState.paused ?? true, scanError: null });
+    activeId: previewState.activeId ?? null, paused: previewState.paused ?? true, media: previewState.media, scanError: null });
 }
 window.wpPreview = true;
 window.iina = {
@@ -42,7 +43,11 @@ window.iina = {
       const index = previewState.videos.findIndex(record => record.id === action.id);
       const record = previewState.videos[index];
       if (record) {
-        if (action.type === "complete") previewState.videos[index] = markCompleted(record, Date.now());
+        if (action.type === "seek") {
+          if (previewState.activeId !== action.id) return;
+          previewState.videos[index] = updateProgress(record, { position: Math.min(record.duration, Math.max(0, action.position)),
+            duration: record.duration, watchedSeconds: 0, firstPlayback: false, eof: false, now: Date.now() }, previewState.settings.completionThreshold);
+        } else if (action.type === "complete") previewState.videos[index] = markCompleted(record, Date.now());
         else if (action.type === "reset") {
           previewState.videos[index] = resetRecord(record, Date.now());
           if (previewState.activeId === action.id) previewState.paused = true;
@@ -51,6 +56,7 @@ window.iina = {
           previewState.paused = previewState.activeId === action.id ? !previewState.paused : false;
           previewState.activeId = action.id;
         }
+        if (previewState.activeId) previewState.media = { id: previewState.activeId, width: 1920, height: 1080, codec: "h264" };
         patch([previewState.videos[index]!]);
       }
     } else if (action.type === "threshold") { previewState.settings.completionThreshold = action.value; patch(); }

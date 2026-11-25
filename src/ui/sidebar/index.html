@@ -36,7 +36,7 @@
         <button role="tab" data-filter="watching" aria-selected="false">观看中</button>
         <button role="tab" data-filter="unwatched" aria-selected="false">未观看</button>
       </div>
-      <div class="list-toolbar"><span id="list-count">0 个视频</span><label><span class="sr-only">排序方式</span><select id="sort" aria-label="排序方式"><option value="name">文件名</option><option value="progress">观看进度</option><option value="recent">最近观看</option></select></label></div>
+      <div class="list-toolbar"><span id="list-count">0 个视频</span><label><span class="sr-only">列表密度</span><select id="density" aria-label="列表密度"><option value="comfortable">舒适</option><option value="compact">紧凑</option></select></label><label><span class="sr-only">排序方式</span><select id="sort" aria-label="排序方式"><option value="name">文件名</option><option value="progress">观看进度</option><option value="recent">最近观看</option></select></label></div>
     </header>
     <div id="notice" class="notice" role="status" hidden></div>
     <section id="list" class="video-list" role="listbox" aria-label="视频列表，使用方向键选择，回车播放，空格播放或暂停" tabindex="0"><div id="list-content"></div></section>
@@ -45,9 +45,10 @@
       <div id="selection" class="selection" hidden>
         <div class="selection-meta"><span>选中视频</span><strong id="selected-percent">0%</strong></div>
         <div id="selected-name" class="selected-name"></div>
-        <div class="selection-track"><div id="selected-progress"></div></div>
+        <div id="selected-track" class="progress-track selection-track" title="浅色为历史最远位置，实色和圆点为最后位置；不代表实际观看覆盖率"><div class="progress-history"></div><div class="progress-position"></div><div class="progress-thumb"></div><input id="selected-seek" type="range" min="0" max="1" step="1" aria-label="调整选中视频的播放位置" disabled></div>
         <div class="selection-detail"><span id="selected-position"></span><span id="selected-source"></span></div>
         <div class="actions"><button id="play-selected">播放视频</button><button id="complete-selected">标记完成</button><button id="reset-selected" class="muted-button">重置</button></div>
+        <details id="video-details"><summary>视频详情</summary><dl><dt>分辨率</dt><dd id="selected-resolution">播放后获取</dd><dt>视频编码</dt><dd id="selected-codec">—</dd><dt>实际观看</dt><dd id="selected-watched">0:00</dd><dt>播放次数</dt><dd id="selected-plays">0 次</dd><dt>最近观看</dt><dd id="selected-recent">尚未观看</dd></dl><div id="selected-path" class="file-path"></div><button id="reveal-file">在 Finder 中显示视频</button><p class="progress-legend">浅色进度：历史最远位置；实色和圆点：最后位置。拖动仅预览，松开跳转；不代表实际观看覆盖率。</p></details>
       </div>
       <details id="settings"><summary>设置与数据</summary><div class="settings-content"><label>自动完成阈值 <select id="threshold"><option value="0.8">80%</option><option value="0.85">85%</option><option value="0.9">90%</option><option value="0.95">95%</option><option value="1">100%</option></select></label><p>按历史最远播放位置判断完成。普通打开由 IINA 恢复进度；“继续观看”使用本插件的记录。</p><label>自动保存间隔 <select id="save-interval"><option value="5">5 秒（默认）</option><option value="15">15 秒</option><option value="30">30 秒</option><option value="60">60 秒</option></select></label><p id="save-hint">仅有变化时写入。暂停、切换和手动操作立即保存；异常退出可能丢失最近约 5 秒的进度。</p><button id="reveal-data">在 Finder 中显示记录</button></div></details>
       <div class="storage-line"><span id="storage-status" role="status">正在连接观看记录…</span><span id="preview-label" hidden>交互预览</span><span class="local-label">仅保存在本机</span></div>

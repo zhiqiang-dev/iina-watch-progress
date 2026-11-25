@@ -1,8 +1,9 @@
-import { MSG, type ViewState, type ViewSnapshot, type UIAction } from "../../messaging/message-bus";
+import { MSG, type ViewState, type ViewSnapshot, type UIAction, type MediaInfo } from "../../messaging/message-bus";
 import { VideoListModel, type VideoFilter, type VideoSort } from "../video-list-model";
-import { VirtualVideoList, ROW_HEIGHT, formatTime as time } from "./virtual-list";
+import { VirtualVideoList, formatTime as time } from "./virtual-list";
 import { DEFAULT_SAVE_INTERVAL } from "../../models/settings";
 import { BrowseStateStore, DEFAULT_BROWSE, captureAnchor, restoreAnchor, type BrowseState } from "../browse-state";
+import { positionRatio, remainingTime } from "../progress-presentation";
 
 interface WebViewBridge {
   postMessage(name: string, data?: unknown): void;
@@ -20,6 +21,8 @@ const completedCount = el("completed").firstChild!, completedTotal = el("complet
 let state: ViewSnapshot | undefined;
 let selectedId: string | undefined;
 let filter: VideoFilter = "all", search = "", sort: VideoSort = "name", folderKey = "";
+let density: BrowseState["density"] = "comfortable";
+const mediaCache = new Map<string, MediaInfo>();
 const browseStore = new BrowseStateStore((() => { try { return window.localStorage; } catch { return undefined; } })());
 let follow = true, lastActiveId: string | undefined, pendingFollow: string | undefined, locateRequested = false;
 let pendingRestore: BrowseState | undefined, rememberTimer: number | undefined;
@@ -27,8 +30,8 @@ let locateBlocked = false, revealedQuery: { filter: VideoFilter; search: string;
 function rememberNow(): void {
   if (rememberTimer !== undefined) window.clearTimeout(rememberTimer); rememberTimer = undefined;
   if (!state?.selectedFolder || !model.total || pendingRestore) return;
-  browseStore.set(state.selectedFolder, { filter, search, sort, selectedId, follow, density: "comfortable",
-    ...captureAnchor(model.ids, list.scrollTop, ROW_HEIGHT) });
+  browseStore.set(state.selectedFolder, { filter, search, sort, selectedId, follow, density,
+    ...captureAnchor(model.ids, list.scrollTop, virtual.rowHeight) });
 }
 function rememberSoon(): void {
   if (rememberTimer !== undefined) window.clearTimeout(rememberTimer);
@@ -36,6 +39,7 @@ function rememberSoon(): void {
 }
 function queryControls(): void {
   el<HTMLInputElement>("search").value = search; el<HTMLSelectElement>("sort").value = sort;
+  el<HTMLSelectElement>("density").value = density;
   for (const button of document.querySelectorAll<HTMLElement>("[data-filter]")) button.setAttribute("aria-selected", String(button.dataset.filter === filter));
 }
 function renderNavigation(): void {
@@ -65,10 +69,25 @@ function renderSelection(): void {
   if (!record) return;
   const percent = Math.floor(record.progress * 100);
   text("selected-name", record.fileName); el("selected-name").title = record.filePath;
-  text("selected-percent", `${percent}%`); width("selected-progress", `${percent}%`);
-  text("selected-position", `${time(record.position)} / ${time(record.duration, true)}`);
+  text("selected-percent", record.status === "completed" ? "已完成" : `最远 ${percent}%`);
+  const seek = el<HTMLInputElement>("selected-seek");
+  if (seek.dataset.scrubbing !== "true") {
+    el("selected-track").dataset.jumping = String(Math.abs(record.position - Number(seek.value)) > 3);
+    el("selected-track").style.setProperty("--history", `${percent}%`);
+    el("selected-track").style.setProperty("--position", `${positionRatio(record.position, record.duration) * 100}%`);
+    text("selected-position", `${time(record.position)} / ${time(record.duration, true)} · ${remainingTime(record.position, record.duration)}`);
+    seek.max = String(Math.max(1, record.duration)); seek.value = String(record.position);
+    seek.setAttribute("aria-valuetext", `${time(record.position)} / ${time(record.duration, true)}`);
+  }
+  seek.disabled = state?.activeId !== record.id || record.duration <= 0;
+  seek.title = seek.disabled ? "播放此视频后可调整位置" : "拖动预览，松开跳转";
   text("selected-source", record.status === "completed" ? record.completionSource === "manual" ? "手动完成" : "自动完成" : record.status === "watching" ? "观看中" : "未观看");
   disable("complete-selected", record.status === "completed" || !!state?.storage.readOnly); disable("reset-selected", !!state?.storage.readOnly);
+  const media = mediaCache.get(record.id);
+  text("selected-resolution", media?.width && media.height ? `${media.width} × ${media.height}` : "播放后获取");
+  text("selected-codec", media?.codec || "—"); text("selected-watched", time(record.watchedTime));
+  text("selected-plays", `${record.playCount} 次`); text("selected-recent", record.lastPlayedAt ? new Date(record.lastPlayedAt).toLocaleString() : "尚未观看");
+  text("selected-path", record.filePath);
 }
 function renderOverview(): void {
   if (!state) return;
@@ -104,6 +123,10 @@ function renderListState(): void {
 }
 function render(next: ViewState): void {
   let restoredFolder = false;
+  if (next.media) {
+    mediaCache.set(next.media.id, next.media);
+    if (mediaCache.size > 100) mediaCache.delete(mediaCache.keys().next().value!);
+  }
   if (next.kind === "patch") {
     if (!state || (next.scope !== undefined && next.scope !== state.scope)) return;
     state = { ...state, storage: next.storage, settings: next.settings, activeId: next.activeId ?? undefined, paused: next.paused, scanError: next.scanError ?? undefined };
@@ -113,7 +136,8 @@ function render(next: ViewState): void {
       rememberNow();
       const saved = next.selectedFolder ? browseStore.get(next.selectedFolder) : undefined;
       const browsing = saved ?? DEFAULT_BROWSE;
-      selectedId = browsing.selectedId; filter = browsing.filter; search = browsing.search; sort = browsing.sort; follow = browsing.follow;
+      selectedId = browsing.selectedId; filter = browsing.filter; search = browsing.search; sort = browsing.sort; follow = browsing.follow; density = browsing.density;
+      virtual.setDensity(density);
       pendingRestore = saved; restoredFolder = !!saved; pendingFollow = undefined;
       revealedQuery = undefined; locateBlocked = false; list.scrollTop = 0;
       model.setQuery(filter, search, sort); queryControls();
@@ -138,7 +162,7 @@ function render(next: ViewState): void {
     if (follow && !restoredFolder && !pendingRestore) pendingFollow = state.activeId;
   }
   renderOverview(); renderListState(); renderNavigation();
-  if (pendingRestore && model.total) { virtual.scrollTo(restoreAnchor(model.ids, pendingRestore, ROW_HEIGHT)); pendingRestore = undefined; }
+  if (pendingRestore && model.total) { virtual.scrollTo(restoreAnchor(model.ids, pendingRestore, virtual.rowHeight)); pendingRestore = undefined; }
   if (locateRequested && state.activeId && model.records.has(state.activeId)) { locateRequested = false; locateCurrent(); }
   else if (pendingFollow && model.records.has(pendingFollow)) { pendingFollow = undefined; locateCurrent(false); }
 }
@@ -152,6 +176,7 @@ list.addEventListener("scroll", rememberSoon, { passive: true });
 window.addEventListener("pagehide", rememberNow);
 list.addEventListener("click", event => {
   const target = event.target as HTMLElement, row = target.closest<HTMLElement>(".video-row");
+  if (target.closest(".row-seek")) return;
   if (!row?.dataset.id) return;
   selectedId = row.dataset.id; list.focus({ preventScroll: true }); updateRows(); renderSelection();
   rememberSoon();
@@ -159,11 +184,12 @@ list.addEventListener("click", event => {
 });
 list.addEventListener("dblclick", event => {
   const target = event.target as HTMLElement;
-  if (target.closest(".row-icon")) return;
+  if (target.closest(".row-icon,.row-seek")) return;
   const id = target.closest<HTMLElement>(".video-row")?.dataset.id;
   if (id) send({ type: "play", id });
 });
 list.addEventListener("keydown", event => {
+  if ((event.target as HTMLElement).matches("input[type=range]")) return;
   if ((event.key === "Enter" || event.key === " ") && selectedId) {
     event.preventDefault(); send({ type: event.key === " " ? "toggle-playback" : "play", id: selectedId }); return;
   }
@@ -173,8 +199,8 @@ list.addEventListener("keydown", event => {
   const current = selectedId ? model.ids.indexOf(selectedId) : -1;
   const index = event.key === "Home" ? 0 : event.key === "End" ? model.ids.length - 1 : Math.max(0, Math.min(model.ids.length - 1, current + (event.key === "ArrowDown" ? 1 : -1)));
   selectedId = model.ids[index];
-  if (index * ROW_HEIGHT < list.scrollTop) list.scrollTop = index * ROW_HEIGHT;
-  else if ((index + 1) * ROW_HEIGHT > list.scrollTop + list.clientHeight) list.scrollTop = (index + 1) * ROW_HEIGHT - list.clientHeight;
+  if (index * virtual.rowHeight < list.scrollTop) virtual.scrollTo(index * virtual.rowHeight);
+  else if ((index + 1) * virtual.rowHeight > list.scrollTop + list.clientHeight) virtual.scrollTo((index + 1) * virtual.rowHeight - list.clientHeight);
   updateRows(); renderSelection(); rememberSoon();
 });
 for (const button of document.querySelectorAll<HTMLButtonElement>("[data-filter]")) button.addEventListener("click", () => {
@@ -184,6 +210,42 @@ for (const button of document.querySelectorAll<HTMLButtonElement>("[data-filter]
 });
 el("search").addEventListener("input", event => { search = (event.target as HTMLInputElement).value; updateQuery(); });
 el("sort").addEventListener("change", event => { sort = (event.target as HTMLSelectElement).value as VideoSort; updateQuery(); });
+el("density").addEventListener("change", event => {
+  const anchor = captureAnchor(model.ids, list.scrollTop, virtual.rowHeight);
+  density = (event.target as HTMLSelectElement).value as BrowseState["density"]; virtual.setDensity(density);
+  virtual.scrollTo(restoreAnchor(model.ids, anchor, virtual.rowHeight)); rememberSoon();
+});
+function seekTarget(target: EventTarget | null): { input: HTMLInputElement; id: string } | undefined {
+  if (!(target instanceof HTMLInputElement) || !target.matches(".row-seek,#selected-seek") || target.disabled) return;
+  const id = target.id === "selected-seek" ? selectedId : target.closest<HTMLElement>(".video-row")?.dataset.id;
+  return id ? { input: target, id } : undefined;
+}
+document.addEventListener("input", event => {
+  const target = seekTarget(event.target); if (!target) return;
+  const position = Number(target.input.value); target.input.dataset.scrubbing = "true";
+  virtual.previewPosition(target.id, position);
+  if (selectedId === target.id) {
+    const record = model.records.get(target.id)!;
+    el("selected-track").style.setProperty("--position", `${positionRatio(position, record.duration) * 100}%`);
+    el("selected-track").dataset.jumping = "true";
+    text("selected-position", `${time(position)} / ${time(record.duration)} · ${remainingTime(position, record.duration)}`);
+  }
+});
+document.addEventListener("change", event => {
+  const target = seekTarget(event.target); if (!target) return;
+  delete target.input.dataset.scrubbing;
+  send({ type: "seek", id: target.id, position: Number(target.input.value) });
+});
+document.addEventListener("pointercancel", event => {
+  const target = seekTarget(event.target); if (!target) return;
+  delete target.input.dataset.scrubbing; updateRows(); renderSelection();
+});
+document.addEventListener("pointermove", event => {
+  const target = seekTarget(event.target); if (!target) return;
+  const bounds = target.input.getBoundingClientRect();
+  const seconds = Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width)) * Number(target.input.max);
+  target.input.title = time(seconds);
+});
 el("locate-current").addEventListener("click", () => locateCurrent());
 el("follow-current").addEventListener("click", () => { follow = !follow; if (follow) locateCurrent(false); renderNavigation(); rememberSoon(); });
 el("reveal-current").addEventListener("click", () => {
@@ -204,6 +266,7 @@ el("save-interval").addEventListener("change", event => send({ type: "save-inter
 el("refresh").addEventListener("click", () => send({ type: "refresh" }));
 el("detach").addEventListener("click", () => send({ type: "detach" }));
 el("reveal-data").addEventListener("click", () => send({ type: "reveal-data" }));
+el("reveal-file").addEventListener("click", () => { if (selectedId) send({ type: "reveal-file", id: selectedId }); });
 if (window.wpPreview) el("preview-label").hidden = false;
 if (window.iina) { window.iina.onMessage(MSG.view, render); window.iina.postMessage(MSG.ready, {}); }
 else { text("storage-status", "请在 IINA 中打开插件，或运行 pnpm preview"); el("empty").hidden = false; list.hidden = true; }

@@ -75,7 +75,7 @@ function runtime(options: { loadEvents?: boolean } = {}) {
         const videos = new Map(view.videos.map(record => [record.id, record]));
         for (const record of next.videos) videos.set(record.id, record);
         view = { ...view, videos: [...videos.values()], settings: next.settings, storage: next.storage,
-          activeId: next.activeId ?? undefined, paused: next.paused, scanError: next.scanError ?? undefined };
+          activeId: next.activeId ?? undefined, paused: next.paused, media: next.media, scanError: next.scanError ?? undefined };
       }
     },
     show() {},
@@ -86,6 +86,7 @@ function runtime(options: { loadEvents?: boolean } = {}) {
       standaloneWindow: { ...ui, open() {}, close() {}, setProperty() {}, setFrame() {} },
       core: { open: (path: string) => { properties.path = path; } },
       mpv: {
+        getNative: () => ({ w: 1920, h: 1080 }),
         getNumber: (name: string) => properties[name], getFlag: (name: string) => properties[name],
         getString: (name: string) => properties[name],
         set: (name: string, value: unknown) => { properties[name] = value; },
@@ -129,6 +130,17 @@ function runtime(options: { loadEvents?: boolean } = {}) {
 }
 
 describe("bundled IINA main/global integration", () => {
+  it("seeks only within the active file and keeps its paused state", () => {
+    const app = runtime(); app.properties.pause = true; app.fire("mpv.pause.changed");
+    const active = mediaId("/Course/01.mp4");
+    app.action({ type: "seek", id: mediaId("/Course/02.mp4"), position: 50 });
+    app.action({ type: "seek", id: active, position: NaN });
+    expect(app.commands).toEqual([]);
+    app.action({ type: "seek", id: active, position: 150 }); expect(app.commands.at(-1)).toEqual(["seek", ["100", "absolute+exact"]]);
+    app.action({ type: "seek", id: active, position: -10 }); expect(app.commands.at(-1)).toEqual(["seek", ["0", "absolute+exact"]]);
+    expect(app.properties.pause).toBe(true); expect(app.plays).toEqual([]);
+    expect(app.state().media).toMatchObject({ id: active, width: 1920, height: 1080 });
+  });
   it("locates the active file's folder without playing or seeking", () => {
     const app = runtime(); app.setPlaylist(["/Course/01.mp4", "/Other/01.mp4"]);
     app.fire("mpv.playlist.changed"); app.runTimers();

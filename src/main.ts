@@ -1,7 +1,7 @@
 import { MpvAdapter } from "./adapter/mpv-api";
 import { fileName, folderPath, isVideo, mediaId, normalizePath } from "./core/media-identity";
 import { FolderListingCache, includeFolder, playlistItems, type MediaItem } from "./core/playlist-service";
-import { MSG, type FolderOption, type RecordsMessage, type ViewSnapshot, type ViewPatch } from "./messaging/message-bus";
+import { MSG, type FolderOption, type RecordsMessage, type ViewSnapshot, type ViewPatch, type MediaInfo } from "./messaging/message-bus";
 import type { VideoRecord } from "./models/video-record";
 import type { PlaybackSample } from "./core/playback-tracker";
 import type { StorageState } from "./storage/json-storage";
@@ -35,6 +35,15 @@ let closing = false;
 let scanError: string | undefined;
 let pendingResume: { path: string; position: number; expires: number } | undefined;
 let syncTimer: string | undefined;
+let seekTimer: string | undefined;
+let media: MediaInfo | undefined;
+function refreshMedia(): void {
+  if (!activePath) { media = undefined; return; }
+  try {
+    const params = iina.mpv.getNative<{ w?: number; h?: number }>("video-params");
+    media = { id: mediaId(activePath), width: Number(params?.w) || 0, height: Number(params?.h) || 0, codec: mpv.string("video-codec") };
+  } catch { media = undefined; }
+}
 let settings = { ...DEFAULT_SETTINGS };
 let storage: StorageState = { readOnly: false, dirty: false, recovered: false, lastSavedAt: 0,
   error: "正在连接观看记录…" };
@@ -45,7 +54,7 @@ function currentPath(): string | undefined {
 function postView(target?: IINA.API.SidebarView | IINA.API.StandaloneWindow): void {
   const state: ViewSnapshot = { kind: "snapshot", scope, videos: [...videosById.values()], settings, storage,
     items, folders, selectedFolder, activeId: activePath ? mediaId(activePath) : undefined,
-    paused: activePath ? mpv.flag("pause", true) : true, scanError };
+    paused: activePath ? mpv.flag("pause", true) : true, media, scanError };
   if (target) { target.postMessage(MSG.view, state); return; }
   if (sidebarReady) sidebar.postMessage(MSG.view, state);
   if (detachedReady) standaloneWindow.postMessage(MSG.view, state);
@@ -53,7 +62,7 @@ function postView(target?: IINA.API.SidebarView | IINA.API.StandaloneWindow): vo
 function postPatch(videos: VideoRecord[] = []): void {
   const state: ViewPatch = { kind: "patch", scope, videos, settings, storage,
     activeId: activePath ? mediaId(activePath) : null, paused: activePath ? mpv.flag("pause", true) : true,
-    scanError: scanError ?? null };
+    media, scanError: scanError ?? null };
   if (sidebarReady) sidebar.postMessage(MSG.view, state);
   if (detachedReady) standaloneWindow.postMessage(MSG.view, state);
 }
@@ -115,6 +124,8 @@ function endSession(): void {
   session = undefined;
   activePath = undefined;
   lastReading = undefined;
+  media = undefined;
+  if (seekTimer) clearTimeout(seekTimer); seekTimer = undefined;
   postPatch();
 }
 function fileLoaded(): void {
@@ -130,7 +141,7 @@ function fileLoaded(): void {
     selectedFolder = folderPath(path);
     globalAPI.postMessage(MSG.begin, { session, path });
   }
-  syncPlaylist();
+  refreshMedia(); syncPlaylist();
   sample();
   // Some IINA versions dispatch their file-loaded callback after playback-restart.
   if (pendingResume) setTimeout(seekPending, 200);
@@ -193,6 +204,20 @@ function action(value: unknown): void {
         break;
       case "toggle-playback":
         if (typeof value.id === "string") togglePlayback(value.id);
+        break;
+      case "seek":
+        if (typeof value.id === "string" && activePath && session && value.id === mediaId(activePath) &&
+            currentPath() === activePath && typeof value.position === "number" && Number.isFinite(value.position)) {
+          const duration = mpv.number("duration");
+          if (duration <= 0) break;
+          const position = Math.max(0, Math.min(value.position, duration));
+          iina.mpv.command("seek", [String(position), "absolute+exact"]);
+          if (seekTimer) clearTimeout(seekTimer);
+          seekTimer = setTimeout(() => { seekTimer = undefined; sample(true); }, 200);
+        }
+        break;
+      case "reveal-file":
+        if (typeof value.id === "string" && itemsById.has(value.id)) iina.file.showInFinder(itemsById.get(value.id)!.path);
         break;
       case "complete": case "reset":
         if (typeof value.id === "string" && items.some(item => item.id === value.id))
@@ -272,6 +297,7 @@ iina.event.on("iina.file-started", seekPending);
 iina.event.on("mpv.pause.changed", () => { sample(mpv.flag("pause", true)); postPatch(); });
 iina.event.on("mpv.duration.changed", () => sample());
 iina.event.on("mpv.speed.changed", () => sample());
+iina.event.on("mpv.video-reconfig", () => { refreshMedia(); postPatch(); });
 iina.event.on("mpv.eof-reached.changed", () => {
   if (mpv.flag("eof-reached")) sample(true, true);
 });

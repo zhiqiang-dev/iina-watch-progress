@@ -15,6 +15,7 @@ export interface RecordsMessage {
   storage: StorageState;
 }
 export interface FolderOption { path: string; name: string; }
+export interface MediaInfo { id: string; width: number; height: number; codec: string; }
 export interface ViewSnapshot extends RecordsMessage {
   kind?: "snapshot";
   items: MediaItem[];
@@ -22,12 +23,14 @@ export interface ViewSnapshot extends RecordsMessage {
   selectedFolder?: string;
   activeId?: string;
   paused?: boolean;
+  media?: MediaInfo;
   scanError?: string;
 }
 export interface ViewPatch extends RecordsMessage {
   kind: "patch";
   activeId: string | null;
   paused: boolean;
+  media?: MediaInfo;
   scanError: string | null;
 }
 export type ViewState = ViewSnapshot | ViewPatch;
@@ -35,7 +38,9 @@ export type UIAction =
   | { type: "play" | "continue" | "complete" | "reset" | "toggle-playback"; id: string }
   | { type: "refresh" | "detach" | "reveal-data" | "locate-current" }
   | { type: "folder"; path: string }
-  | { type: "threshold" | "save-interval"; value: number };
+  | { type: "threshold" | "save-interval"; value: number }
+  | { type: "seek"; id: string; position: number }
+  | { type: "reveal-file"; id: string };
 
 export const MSG = {
   sync: "wp:sync", begin: "wp:begin", sample: "wp:sample", end: "wp:end",
