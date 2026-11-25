@@ -99,7 +99,7 @@ function renderDetails(): void {
 function renderOverview(): void {
   if (!state) return;
   const rate = model.total ? model.completed / model.total : 0;
-  const number = String(model.completed), total = `/${model.total}`, rateText = String(Math.round(rate * 1000) / 10);
+  const number = String(model.completed), total = `/${model.total}`, rateText = rate > 0 && rate < 0.001 ? "<0.1" : String(Math.round(rate * 1000) / 10);
   if (completedCount.nodeValue !== number) completedCount.nodeValue = number;
   if (completedTotal.textContent !== total) completedTotal.textContent = total;
   text("watching", String(model.watching));

@@ -57,7 +57,12 @@ function currentPath(refreshDirectory = true): string | undefined {
 function pollSidebarVisibility(): void {
   if (!sidebarReady) return;
   let visible = true;
-  try { visible = iina.core.window.sidebar === "plugin:io.iina.watch-progress" && !iina.core.window.miniaturized; }
+  try {
+    const shown = iina.core.window.sidebar;
+    // IINA 1.5.1's getter only reports the settings sidebar and returns null
+    // even for a visible plugin sidebar. Null is unknown, not proof of hiding.
+    visible = !iina.core.window.miniaturized && (shown == null || shown === "plugin:io.iina.watch-progress");
+  }
   catch { /* Older hosts without window introspection rely on WebView visibility. */ }
   const changed = visible !== sidebarHostVisible; sidebarHostVisible = visible;
   if (changed && visible && sidebarVisible) postView(sidebar);

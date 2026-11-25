@@ -137,9 +137,17 @@ describe("bundled IINA main/global integration", () => {
     app.properties["time-pos"] = 20; app.tick(); app.checkpoint();
     expect(app.viewMessages).toHaveLength(messages); expect(app.writes()).toBeGreaterThan(0);
     app.action({ type: "visibility", visible: true }); expect(app.state().videos[0]?.position).toBe(20);
-    app.playerWindow.sidebar = null; app.tick(); const hidden = app.viewMessages.length;
+    app.playerWindow.sidebar = "audio"; app.tick(); const hidden = app.viewMessages.length;
     app.properties["time-pos"] = 25; app.tick(); expect(app.viewMessages).toHaveLength(hidden);
     app.playerWindow.sidebar = "plugin:io.iina.watch-progress"; app.tick(); expect(app.state().videos[0]?.position).toBe(25);
+  });
+  it("keeps updating a visible plugin sidebar when IINA 1.5.1 reports null for its name", () => {
+    const app = runtime(); app.playerWindow.sidebar = null;
+    app.properties["time-pos"] = 35; app.tick();
+    expect(app.state().videos[0]?.position).toBe(35);
+    app.playerWindow.miniaturized = true; app.tick(); const messages = app.viewMessages.length;
+    app.properties["time-pos"] = 36; app.tick(); expect(app.viewMessages).toHaveLength(messages);
+    app.playerWindow.miniaturized = false; app.tick(); expect(app.state().videos[0]?.position).toBe(36);
   });
   it("avoids repeated duration/speed/flags and cwd reads during periodic playback and all mpv reads while paused", () => {
     const app = runtime(); app.reads.length = 0;
