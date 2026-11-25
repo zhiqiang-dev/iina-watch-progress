@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'">
+  <title>观看进度</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="index.js" defer></script>
+</head>
+<body>
+  <main id="app">
+    <header>
+      <div class="heading">
+        <span class="app-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 5.5c3-1 5-1 8 1 3-2 5-2 8-1v14c-3-1-5-1-8 1-3-2-5-2-8-1zM12 6.5v14" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
+        <div class="title-group"><span class="eyebrow">观看进度</span><h1 id="folder-title">视频课程</h1></div>
+        <button id="refresh" class="icon-button" title="刷新文件夹" aria-label="刷新文件夹">↻</button>
+        <button id="detach" class="icon-button" title="独立窗口" aria-label="打开独立窗口">↗</button>
+      </div>
+      <label class="folder-control"><span class="sr-only">文件夹</span><select id="folder" title="切换文件夹"><option>尚未打开文件夹</option></select></label>
+      <div class="stats" aria-label="文件夹统计">
+        <div><span>已完成</span><strong id="completed">0<small>/0</small></strong></div>
+        <div><span>观看中</span><strong id="watching">0</strong></div>
+        <div><span>完成率</span><strong id="rate">0<small>%</small></strong></div>
+      </div>
+      <div class="overall-track"><div id="overall-progress"></div></div>
+      <button id="continue" class="continue-button" disabled><span aria-hidden="true">▶</span><span id="continue-label">继续观看</span></button>
+      <div id="continue-hint" class="continue-hint">打开视频文件夹，开始记录观看进度</div>
+      <label class="search-field"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg><input id="search" type="search" placeholder="搜索视频" aria-label="搜索视频" autocomplete="off"></label>
+      <div class="segments" role="tablist" aria-label="观看状态筛选">
+        <button role="tab" data-filter="all" aria-selected="true">全部</button>
+        <button role="tab" data-filter="completed" aria-selected="false">已完成</button>
+        <button role="tab" data-filter="watching" aria-selected="false">观看中</button>
+        <button role="tab" data-filter="unwatched" aria-selected="false">未观看</button>
+      </div>
+      <div class="list-toolbar"><span id="list-count">0 个视频</span><label><span class="sr-only">排序方式</span><select id="sort" aria-label="排序方式"><option value="name">文件名</option><option value="progress">观看进度</option><option value="recent">最近观看</option></select></label></div>
+    </header>
+    <div id="notice" class="notice" role="status" hidden></div>
+    <section id="list" class="video-list" role="listbox" aria-label="视频列表，使用方向键选择，回车播放" tabindex="0"><div id="list-content"></div></section>
+    <div id="empty" class="empty" hidden><svg viewBox="0 0 40 40" aria-hidden="true"><rect x="5" y="9" width="30" height="23" rx="4"/><path d="m17 16 9 5-9 5z"/></svg><strong id="empty-title">还没有视频</strong><p id="empty-description">在 IINA 中打开本地视频或文件夹，<br>观看记录会自动出现在这里。</p></div>
+    <footer>
+      <div id="selection" class="selection" hidden>
+        <div class="selection-meta"><span>选中视频</span><strong id="selected-percent">0%</strong></div>
+        <div id="selected-name" class="selected-name"></div>
+        <div class="selection-track"><div id="selected-progress"></div></div>
+        <div class="selection-detail"><span id="selected-position"></span><span id="selected-source"></span></div>
+        <div class="actions"><button id="play-selected">播放视频</button><button id="complete-selected">标记完成</button><button id="reset-selected" class="muted-button">重置</button></div>
+      </div>
+      <details id="settings"><summary>设置与数据</summary><div class="settings-content"><label>自动完成阈值 <select id="threshold"><option value="0.8">80%</option><option value="0.85">85%</option><option value="0.9">90%</option><option value="0.95">95%</option><option value="1">100%</option></select></label><p>按历史最远播放位置判断完成。普通打开由 IINA 恢复进度；“继续观看”使用本插件的记录。</p><button id="reveal-data">在 Finder 中显示记录</button></div></details>
+      <div class="storage-line"><span id="storage-status" role="status">正在连接观看记录…</span><span id="preview-label" hidden>交互预览</span><span class="local-label">仅保存在本机</span></div>
+    </footer>
+  </main>
+</body>
+</html>

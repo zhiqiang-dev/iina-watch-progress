@@ -1,0 +1,36 @@
+{
+  "date": "2026-11-25",
+  "runtime": "v22.22.3",
+  "platform": "darwin/arm64",
+  "method": "Median of 7 warmed runs, synthetic records, memory I/O, Node.js. List timings exclude DOM; not an IINA CPU/FPS or disk benchmark.",
+  "results": [
+    {
+      "records": 1000,
+      "fullMessageBytes": 299807,
+      "patchMessageBytes": 447,
+      "checkpointMedianMs": {
+        "before": 4.999,
+        "after": 0.691
+      },
+      "list100UpdatesMedianMs": {
+        "before": 25.169,
+        "after": 0.06
+      },
+      "fullSortsAfterUpdates": 1
+    },
+    {
+      "records": 10000,
+      "fullMessageBytes": 3026810,
+      "patchMessageBytes": 447,
+      "checkpointMedianMs": {
+        "before": 56.662,
+        "after": 7.676
+      },
+      "list100UpdatesMedianMs": {
+        "before": 267.913,
+        "after": 0.083
+      },
+      "fullSortsAfterUpdates": 1
+    }
+  ]
+}

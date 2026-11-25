@@ -5,3 +5,6 @@ release/
 .DS_Store
 coverage/
 .local/
+/.idea/vcs.xml
+/.idea/*
+/.idea
