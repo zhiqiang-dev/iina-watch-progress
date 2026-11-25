@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "channel": "prerelease",
+  "versions": [
+    {
+      "version": "0.1.1",
+      "tag": "v0.1.1",
+      "sourceCommit": "5ff67ba0a85cb0119910d6d0ea0fec7d2a8ec81e",
+      "artifact": "iina-watch-progress-0.1.1.iinaplgz",
+      "sha256": "d3ca7c9110446da026814f6377eb108a778461cf9d6d7409054a4b7c1cc3fd68",
+      "bytes": 22818,
+      "tests": 72
+    },
+    {
+      "version": "0.1.2",
+      "tag": "v0.1.2",
+      "sourceCommit": "a19fa34de5c5de7b28368a9fdaf507873e5c74ce",
+      "artifact": "iina-watch-progress-0.1.2.iinaplgz",
+      "sha256": "335ad302584d80fd11afe93360cf543be486a0ecc80c53eaed61479e41d919cb",
+      "bytes": 23557,
+      "tests": 75
+    },
+    {
+      "version": "0.1.3",
+      "tag": "v0.1.3",
+      "sourceCommit": "6bca06ed79f8da4923f7793d83de3f389bdc3840",
+      "artifact": "iina-watch-progress-0.1.3.iinaplgz",
+      "sha256": "f9aecc9691a96c03b5b11ae0e753c449c088b0c4d2c0f1b0ccc9baf7c7ea477e",
+      "bytes": 30283,
+      "tests": 92
+    }
+  ]
+}
