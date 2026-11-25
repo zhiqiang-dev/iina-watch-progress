@@ -7,3 +7,6 @@
 .row-icon:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 .video-row:not([data-active=true]) .row-icon:hover{font-size:0;background:var(--blue);color:white}
 .video-row:not([data-active=true]) .row-icon:hover::before{content:"▶";font-size:10px}
+/* Keep expanded settings reachable in short standalone windows. */
+#app{overflow:hidden}
+footer{min-height:0;flex-shrink:1;overflow-y:auto}
