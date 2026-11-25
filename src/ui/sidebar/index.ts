@@ -4,6 +4,7 @@ import { VirtualVideoList, formatTime as time } from "./virtual-list";
 import { DEFAULT_SAVE_INTERVAL } from "../../models/settings";
 import { BrowseStateStore, DEFAULT_BROWSE, captureAnchor, restoreAnchor, type BrowseState } from "../browse-state";
 import { positionRatio, remainingTime } from "../progress-presentation";
+import { ViewUpdateBuffer } from "../view-update-buffer";
 
 interface WebViewBridge {
   postMessage(name: string, data?: unknown): void;
@@ -17,12 +18,14 @@ function disable(id: string, value: boolean): void { const node = el<HTMLButtonE
 const list = el("list"), model = new VideoListModel();
 if (window.wpPreview && new URLSearchParams(location.search).has("benchmark")) list.dataset.benchmark = "true";
 const virtual = new VirtualVideoList(list, el("list-content"), model);
+const hiddenUpdates = new ViewUpdateBuffer();
 const completedCount = el("completed").firstChild!, completedTotal = el("completed").querySelector("small")!, rateCount = el("rate").firstChild!;
 let state: ViewSnapshot | undefined;
 let selectedId: string | undefined;
 let filter: VideoFilter = "all", search = "", sort: VideoSort = "name", folderKey = "";
 let density: BrowseState["density"] = "comfortable";
 const mediaCache = new Map<string, MediaInfo>();
+let scrubbing: { id: string; position: number } | undefined;
 const browseStore = new BrowseStateStore((() => { try { return window.localStorage; } catch { return undefined; } })());
 let follow = true, lastActiveId: string | undefined, pendingFollow: string | undefined, locateRequested = false;
 let pendingRestore: BrowseState | undefined, rememberTimer: number | undefined;
@@ -47,7 +50,7 @@ function renderNavigation(): void {
   text("current-name", active ? `${state?.paused ? "已暂停" : "正在播放"} · ${active.fileName}` : state?.activeId ? "当前视频在其他文件夹" : "尚未播放视频");
   el("current-name").title = active?.filePath ?? ""; disable("locate-current", !state?.activeId);
   text("follow-current", follow ? "跟随开" : "跟随关"); el("follow-current").setAttribute("aria-pressed", String(follow));
-  if (state?.activeId && model.ids.includes(state.activeId)) locateBlocked = false;
+  if (model.indexOf(state?.activeId) >= 0) locateBlocked = false;
   el("locate-notice").hidden = !locateBlocked && !revealedQuery;
   text("locate-hint", revealedQuery ? "正在临时显示当前视频，原筛选已保留。" : "当前视频被搜索或状态筛选隐藏。");
   el("reveal-current").hidden = !!revealedQuery; el("restore-query").hidden = !revealedQuery;
@@ -57,7 +60,7 @@ function locateCurrent(explicit = true): void {
   const id = state?.activeId; if (!id) return;
   if (explicit) follow = true;
   if (!model.records.has(id)) { locateRequested = true; send({ type: "locate-current" }); return; }
-  const index = model.ids.indexOf(id);
+  const index = model.indexOf(id);
   if (index < 0) { locateBlocked = true; renderNavigation(); return; }
   selectedId = id; virtual.reveal(index); renderSelection(); updateRows(); renderNavigation(); rememberSoon();
 }
@@ -71,7 +74,7 @@ function renderSelection(): void {
   text("selected-name", record.fileName); el("selected-name").title = record.filePath;
   text("selected-percent", record.status === "completed" ? "已完成" : `最远 ${percent}%`);
   const seek = el<HTMLInputElement>("selected-seek");
-  if (seek.dataset.scrubbing !== "true") {
+  if (scrubbing?.id !== record.id) {
     el("selected-track").dataset.jumping = String(Math.abs(record.position - Number(seek.value)) > 3);
     el("selected-track").style.setProperty("--history", `${percent}%`);
     el("selected-track").style.setProperty("--position", `${positionRatio(record.position, record.duration) * 100}%`);
@@ -83,6 +86,10 @@ function renderSelection(): void {
   seek.title = seek.disabled ? "播放此视频后可调整位置" : "拖动预览，松开跳转";
   text("selected-source", record.status === "completed" ? record.completionSource === "manual" ? "手动完成" : "自动完成" : record.status === "watching" ? "观看中" : "未观看");
   disable("complete-selected", record.status === "completed" || !!state?.storage.readOnly); disable("reset-selected", !!state?.storage.readOnly);
+  if (el<HTMLDetailsElement>("video-details").open) renderDetails();
+}
+function renderDetails(): void {
+  const record = selectedId ? model.records.get(selectedId) : undefined; if (!record) return;
   const media = mediaCache.get(record.id);
   text("selected-resolution", media?.width && media.height ? `${media.width} × ${media.height}` : "播放后获取");
   text("selected-codec", media?.codec || "—"); text("selected-watched", time(record.watchedTime));
@@ -130,7 +137,12 @@ function render(next: ViewState): void {
   if (next.kind === "patch") {
     if (!state || (next.scope !== undefined && next.scope !== state.scope)) return;
     state = { ...state, storage: next.storage, settings: next.settings, activeId: next.activeId ?? undefined, paused: next.paused, scanError: next.scanError ?? undefined };
+    const anchor = captureAnchor(model.ids, list.scrollTop, virtual.rowHeight), revision = model.orderRevision;
     model.apply(next.videos);
+    if (revision !== model.orderRevision) {
+      const index = model.indexOf(anchor.anchorId);
+      virtual.scrollTo(index >= 0 ? index * virtual.rowHeight + anchor.anchorOffset : anchor.scrollTop);
+    }
   } else {
     if (state?.selectedFolder !== next.selectedFolder) {
       rememberNow();
@@ -160,6 +172,9 @@ function render(next: ViewState): void {
   if (state.activeId && state.activeId !== lastActiveId) {
     lastActiveId = state.activeId;
     if (follow && !restoredFolder && !pendingRestore) pendingFollow = state.activeId;
+  }
+  if (scrubbing && scrubbing.id !== state.activeId) {
+    virtual.setScrubbing(scrubbing.id, false); scrubbing = undefined; delete el<HTMLInputElement>("selected-seek").dataset.scrubbing;
   }
   renderOverview(); renderListState(); renderNavigation();
   if (pendingRestore && model.total) { virtual.scrollTo(restoreAnchor(model.ids, pendingRestore, virtual.rowHeight)); pendingRestore = undefined; }
@@ -196,7 +211,7 @@ list.addEventListener("keydown", event => {
   if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key) || !model.ids.length) return;
   pauseFollow();
   event.preventDefault();
-  const current = selectedId ? model.ids.indexOf(selectedId) : -1;
+  const current = model.indexOf(selectedId);
   const index = event.key === "Home" ? 0 : event.key === "End" ? model.ids.length - 1 : Math.max(0, Math.min(model.ids.length - 1, current + (event.key === "ArrowDown" ? 1 : -1)));
   selectedId = model.ids[index];
   if (index * virtual.rowHeight < list.scrollTop) virtual.scrollTo(index * virtual.rowHeight);
@@ -223,6 +238,7 @@ function seekTarget(target: EventTarget | null): { input: HTMLInputElement; id: 
 document.addEventListener("input", event => {
   const target = seekTarget(event.target); if (!target) return;
   const position = Number(target.input.value); target.input.dataset.scrubbing = "true";
+  scrubbing = { id: target.id, position }; virtual.setScrubbing(target.id, true);
   virtual.previewPosition(target.id, position);
   if (selectedId === target.id) {
     const record = model.records.get(target.id)!;
@@ -233,12 +249,12 @@ document.addEventListener("input", event => {
 });
 document.addEventListener("change", event => {
   const target = seekTarget(event.target); if (!target) return;
-  delete target.input.dataset.scrubbing;
+  delete target.input.dataset.scrubbing; virtual.setScrubbing(target.id, false); scrubbing = undefined;
   send({ type: "seek", id: target.id, position: Number(target.input.value) });
 });
 document.addEventListener("pointercancel", event => {
   const target = seekTarget(event.target); if (!target) return;
-  delete target.input.dataset.scrubbing; updateRows(); renderSelection();
+  delete target.input.dataset.scrubbing; virtual.setScrubbing(target.id, false); scrubbing = undefined; updateRows(); renderSelection();
 });
 document.addEventListener("pointermove", event => {
   const target = seekTarget(event.target); if (!target) return;
@@ -267,6 +283,19 @@ el("refresh").addEventListener("click", () => send({ type: "refresh" }));
 el("detach").addEventListener("click", () => send({ type: "detach" }));
 el("reveal-data").addEventListener("click", () => send({ type: "reveal-data" }));
 el("reveal-file").addEventListener("click", () => { if (selectedId) send({ type: "reveal-file", id: selectedId }); });
+el("video-details").addEventListener("toggle", () => { if (el<HTMLDetailsElement>("video-details").open) renderDetails(); });
 if (window.wpPreview) el("preview-label").hidden = false;
-if (window.iina) { window.iina.onMessage(MSG.view, render); window.iina.postMessage(MSG.ready, {}); }
+document.addEventListener("visibilitychange", () => {
+  virtual.setVisible(!document.hidden);
+  if (document.hidden) rememberNow(); else for (const next of hiddenUpdates.drain()) render(next);
+  send({ type: "visibility", visible: !document.hidden });
+});
+if (window.iina) {
+  window.iina.onMessage(MSG.view, next => {
+    if (document.hidden) { hiddenUpdates.push(next); return; }
+    for (const pending of hiddenUpdates.drain()) render(pending);
+    render(next);
+  });
+  window.iina.postMessage(MSG.ready, { visible: !document.hidden });
+}
 else { text("storage-status", "请在 IINA 中打开插件，或运行 pnpm preview"); el("empty").hidden = false; list.hidden = true; }

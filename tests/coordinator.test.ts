@@ -4,6 +4,13 @@ import { mediaId } from "../src/core/media-identity";
 import { MemoryFiles, repository, sample } from "./helpers";
 
 describe("multi-window coordinator", () => {
+  it("saves a newly completed video immediately even on a non-flush periodic sample", () => {
+    const files = new MemoryFiles(), repo = repository(files), coordinator = new Coordinator(repo, vi.fn(), vi.fn());
+    coordinator.sync("one", ["/A/01.mp4"], 1); coordinator.begin("one", "s1", "/A/01.mp4", 1);
+    coordinator.sample("one", "s1", sample(96), false);
+    expect(files.writes).toBe(1); expect(repository(files).data.videos[mediaId("/A/01.mp4")]?.status).toBe("completed");
+    coordinator.sample("one", "s1", sample(1), false); expect(files.writes).toBe(1);
+  });
   it("uses a full snapshot only for subscription and constant-size patches for playback", () => {
     const repo = repository(); const post = vi.fn(); const coordinator = new Coordinator(repo, post, vi.fn());
     const paths = Array.from({ length: 1000 }, (_, index) => `/Course/${index}.mp4`);

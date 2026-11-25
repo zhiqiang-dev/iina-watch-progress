@@ -29,6 +29,8 @@ function runtime(options: { loadEvents?: boolean } = {}) {
   const commands: unknown[][] = [];
   const plays: number[] = [];
   const errors: unknown[] = [];
+  const reads: string[] = [];
+  const playerWindow = { sidebar: "plugin:io.iina.watch-progress" as string | null, miniaturized: false };
   const properties: Record<string, unknown> = { path: "/Course/01.mp4", "working-directory": "/",
     "time-pos": 0, duration: 100, pause: false, seeking: false, "paused-for-cache": false, speed: 1, "eof-reached": false };
   let playlist = [{ filename: "/Course/01.mp4" }, { filename: "/Course/02.mp4" }];
@@ -84,11 +86,11 @@ function runtime(options: { loadEvents?: boolean } = {}) {
     iina: {
       console: consoleAPI, file: fileAPI, sidebar: ui,
       standaloneWindow: { ...ui, open() {}, close() {}, setProperty() {}, setFrame() {} },
-      core: { open: (path: string) => { properties.path = path; } },
+      core: { window: playerWindow, open: (path: string) => { properties.path = path; } },
       mpv: {
         getNative: () => ({ w: 1920, h: 1080 }),
-        getNumber: (name: string) => properties[name], getFlag: (name: string) => properties[name],
-        getString: (name: string) => properties[name],
+        getNumber: (name: string) => { reads.push(name); return properties[name]; }, getFlag: (name: string) => { reads.push(name); return properties[name]; },
+        getString: (name: string) => { reads.push(name); return properties[name]; },
         set: (name: string, value: unknown) => { properties[name] = value; },
         command: (name: string, args: string[]) => { commands.push([name, args]); },
         addHook: (name: string, _priority: number, callback: () => void) => hooks.set(name, callback),
@@ -115,7 +117,7 @@ function runtime(options: { loadEvents?: boolean } = {}) {
     ready();
     fire("iina.file-loaded");
   }
-  return { files, properties, fire, hooks, errors, plays, commands, viewMessages, scans,
+  return { files, properties, fire, hooks, errors, plays, commands, viewMessages, scans, reads, playerWindow,
     autosaves, writes: () => writes,
     checkpoint: () => { for (const { callback } of autosaves.values()) callback(); deliver(); },
     tick: () => { ticks.forEach(tick => tick()); deliver(); },
@@ -130,6 +132,22 @@ function runtime(options: { loadEvents?: boolean } = {}) {
 }
 
 describe("bundled IINA main/global integration", () => {
+  it("keeps tracking and saving when the view is hidden, then sends the latest full state", () => {
+    const app = runtime(); app.action({ type: "visibility", visible: false }); const messages = app.viewMessages.length;
+    app.properties["time-pos"] = 20; app.tick(); app.checkpoint();
+    expect(app.viewMessages).toHaveLength(messages); expect(app.writes()).toBeGreaterThan(0);
+    app.action({ type: "visibility", visible: true }); expect(app.state().videos[0]?.position).toBe(20);
+    app.playerWindow.sidebar = null; app.tick(); const hidden = app.viewMessages.length;
+    app.properties["time-pos"] = 25; app.tick(); expect(app.viewMessages).toHaveLength(hidden);
+    app.playerWindow.sidebar = "plugin:io.iina.watch-progress"; app.tick(); expect(app.state().videos[0]?.position).toBe(25);
+  });
+  it("avoids repeated duration/speed/flags and cwd reads during periodic playback and all mpv reads while paused", () => {
+    const app = runtime(); app.reads.length = 0;
+    app.properties["time-pos"] = 1; app.tick(); app.properties["time-pos"] = 2; app.tick();
+    expect(app.reads).toEqual(["path", "time-pos", "path", "time-pos"]);
+    app.properties.pause = true; app.fire("mpv.pause.changed"); app.reads.length = 0; app.tick();
+    expect(app.reads).toEqual([]);
+  });
   it("seeks only within the active file and keeps its paused state", () => {
     const app = runtime(); app.properties.pause = true; app.fire("mpv.pause.changed");
     const active = mediaId("/Course/01.mp4");

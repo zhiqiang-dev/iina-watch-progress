@@ -44,7 +44,7 @@ export class Coordinator {
     const updated = updateProgress(record, update, this.repository.data.settings.completionThreshold);
     this.repository.put(updated);
     if (record === updated && !flush) return;
-    if (flush) this.repository.flush(sample.now);
+    if (flush || (record.status !== "completed" && updated.status === "completed")) this.repository.flush(sample.now);
     this.publishInterested(record.id);
   }
   end(player: string, id: string, now: number): void {

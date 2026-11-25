@@ -15,6 +15,18 @@ function reference(records: VideoRecord[], filter: VideoFilter, search: string, 
       collator.compare(a.fileName, b.fileName) || a.id.localeCompare(b.id)).map(record => record.id);
 }
 describe("incremental video list", () => {
+  it("does not move rows when updated progress/recent values remain between their neighbors", () => {
+    const records = fixture(1000), model = new VideoListModel(); model.replace(records); model.setQuery("all", "", "recent");
+    const top = model.records.get(model.ids[0]!)!, revision = model.orderRevision;
+    for (let tick = 1; tick <= 100; tick++) model.apply([{ ...top, lastPlayedAt: 10000 + tick }]);
+    expect(model.orderRevision).toBe(revision); expect(model.moves).toBe(0); expect(model.indexOf(top.id)).toBe(0);
+    model.apply([{ ...records[0]!, lastPlayedAt: 20000 }]);
+    expect(model.indexOf(records[0]!.id)).toBe(0); expect(model.indexOf(top.id)).toBe(1);
+    model.ids.forEach((id, index) => expect(model.indexOf(id)).toBe(index));
+    model.setQuery("all", "", "progress");
+    const current = model.records.get(model.ids[0]!)!, moves = model.moves;
+    model.apply([{ ...current, progress: 1 }]); expect(model.moves).toBe(moves);
+  });
   it("matches multiple filename keywords in any order", () => {
     const model = new VideoListModel();
     const record = createRecord("/Course/058 第8章 德国教育.mp4", 1);
@@ -42,6 +54,7 @@ describe("incremental video list", () => {
           status: tick % 4 === 0 ? "completed" : tick % 4 === 1 ? "watching" : "unwatched" };
         model.apply([records[index]!]);
         expect(model.ids).toEqual(reference(records, filter, "视频", sort));
+        model.ids.forEach((id, index) => expect(model.indexOf(id)).toBe(index));
         expect(model.completed).toBe(records.filter(record => record.status === "completed").length);
         expect(model.watching).toBe(records.filter(record => record.status === "watching").length);
         const candidate = records.filter(record => record.status !== "completed").sort((a, b) =>

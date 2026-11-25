@@ -48,11 +48,16 @@ for (const count of [1000, 10000]) {
   const optimizedListMs = medianMs(() => {
     for (let tick = 0; tick < 100; tick++) model.apply([{ ...records[0], position: tick, progress: tick / 3600, lastPlayedAt: tick + 1 }]);
   });
+  const recentModel = new VideoListModel(); recentModel.replace(records); recentModel.setQuery("all", "", "recent");
+  const recentListMs = medianMs(() => {
+    for (let tick = 0; tick < 100; tick++) recentModel.apply([{ ...records[0], position: tick, lastPlayedAt: tick + 1 }]);
+  });
   results.push({ records: count, fullMessageBytes, patchMessageBytes,
     checkpointMedianMs: { before: legacySaveMs, after: optimizedSaveMs },
-    list100UpdatesMedianMs: { before: legacyListMs, after: optimizedListMs }, fullSortsAfterUpdates: model.fullSorts });
+    list100UpdatesMedianMs: { before: legacyListMs, after: optimizedListMs }, fullSortsAfterUpdates: model.fullSorts,
+    recent100UpdatesMedianMs: recentListMs, recentRowMoves: recentModel.moves });
 }
-const report = { date: "2026-11-25", runtime: process.version, platform: `${process.platform}/${process.arch}`,
+const report = { version: "0.1.3", date: "2026-11-25", runtime: process.version, platform: `${process.platform}/${process.arch}`,
   method: "Median of 7 warmed runs, synthetic records, memory I/O, Node.js. List timings exclude DOM; not an IINA CPU/FPS or disk benchmark.", results };
 const json = JSON.stringify(report, null, 2);
 const output = process.argv.indexOf("--output");

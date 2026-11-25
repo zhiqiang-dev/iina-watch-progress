@@ -10,24 +10,32 @@ export class VideoListModel {
   completed = 0;
   watching = 0;
   fullSorts = 0;
+  orderRevision = 0;
+  moves = 0;
+  private positions = new Map<string, number>();
+  private names = new Map<string, { source: string; normalized: string }>();
+  private words: string[] = [];
   private filter: VideoFilter = "all";
   private search = "";
   private sort: VideoSort = "name";
   private continueId?: string;
   private readonly collator = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });
   get total(): number { return this.records.size; }
+  indexOf(id?: string): number { return id ? this.positions.get(id) ?? -1 : -1; }
   get continueRecord(): VideoRecord | undefined { return this.continueId ? this.records.get(this.continueId) : undefined; }
   replace(records: VideoRecord[]): void {
     this.records.clear();
+    this.names.clear();
     for (const record of records) this.records.set(record.id, record);
     this.completed = 0; this.watching = 0;
     for (const record of this.records.values()) this.count(record, 1);
     this.findContinue(); this.rebuild();
   }
   setQuery(filter: VideoFilter, search: string, sort: VideoSort): void {
-    search = search.trim().toLocaleLowerCase();
+    search = search.normalize("NFKC").trim().toLocaleLowerCase();
     if (filter === this.filter && search === this.search && sort === this.sort) return;
     this.filter = filter; this.search = search; this.sort = sort;
+    this.words = search ? search.split(/\s+/) : [];
     this.rebuild();
   }
   apply(changes: VideoRecord[]): void {
@@ -44,7 +52,12 @@ export class VideoListModel {
         (this.sort === "progress" && old.progress !== record.progress) ||
         (this.sort === "recent" && old.lastPlayedAt !== record.lastPlayedAt);
       if (wasVisible === isVisible && (!isVisible || !keyChanged)) continue;
-      if (wasVisible) { const index = this.ids.indexOf(record.id); if (index >= 0) this.ids.splice(index, 1); }
+      const previousIndex = this.indexOf(record.id);
+      if (wasVisible && isVisible &&
+          (previousIndex === 0 || this.compare(this.records.get(this.ids[previousIndex - 1]!)!, record) <= 0) &&
+          (previousIndex === this.ids.length - 1 || this.compare(record, this.records.get(this.ids[previousIndex + 1]!)!) <= 0)) continue;
+      if (wasVisible && previousIndex >= 0) { this.ids.splice(previousIndex, 1); this.positions.delete(record.id); }
+      let insertedIndex = this.ids.length;
       if (isVisible) {
         let low = 0, high = this.ids.length;
         while (low < high) {
@@ -52,13 +65,21 @@ export class VideoListModel {
           if (this.compare(this.records.get(this.ids[middle]!)!, record) <= 0) low = middle + 1;
           else high = middle;
         }
-        this.ids.splice(low, 0, record.id);
+        insertedIndex = low; this.ids.splice(low, 0, record.id);
       }
+      const from = previousIndex < 0 ? insertedIndex : Math.min(previousIndex, insertedIndex);
+      for (let index = from; index < this.ids.length; index++) this.positions.set(this.ids[index]!, index);
+      this.orderRevision++; this.moves++;
     }
   }
   private matches(record: VideoRecord): boolean {
-    return (this.filter === "all" || record.status === this.filter) &&
-      this.search.split(/\s+/).every(word => record.fileName.toLocaleLowerCase().includes(word));
+    if (this.filter !== "all" && record.status !== this.filter) return false;
+    if (!this.words.length) return true;
+    let cached = this.names.get(record.id);
+    if (cached?.source !== record.fileName) {
+      cached = { source: record.fileName, normalized: record.fileName.normalize("NFKC").toLocaleLowerCase() }; this.names.set(record.id, cached);
+    }
+    return this.words.every(word => cached!.normalized.includes(word));
   }
   private compare(a: VideoRecord, b: VideoRecord): number {
     const primary = this.sort === "progress" ? b.progress - a.progress : this.sort === "recent" ? b.lastPlayedAt - a.lastPlayedAt : 0;
@@ -79,5 +100,6 @@ export class VideoListModel {
   private rebuild(): void {
     this.fullSorts++;
     this.ids = [...this.records.values()].filter(record => this.matches(record)).sort((a, b) => this.compare(a, b)).map(record => record.id);
+    this.positions.clear(); this.ids.forEach((id, index) => this.positions.set(id, index)); this.orderRevision++;
   }
 }

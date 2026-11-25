@@ -40,7 +40,8 @@ export type UIAction =
   | { type: "folder"; path: string }
   | { type: "threshold" | "save-interval"; value: number }
   | { type: "seek"; id: string; position: number }
-  | { type: "reveal-file"; id: string };
+  | { type: "reveal-file"; id: string }
+  | { type: "visibility"; visible: boolean };
 
 export const MSG = {
   sync: "wp:sync", begin: "wp:begin", sample: "wp:sample", end: "wp:end",

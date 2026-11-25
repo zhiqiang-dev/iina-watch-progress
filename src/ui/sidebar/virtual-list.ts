@@ -17,6 +17,7 @@ export class VirtualVideoList {
   private rows = new Map<string, Row>();
   private frame?: number;
   private nextRow = 0;
+  private visible = !document.hidden;
   private flags: PlaybackView = { paused: true };
   private readonly resize: ResizeObserver;
   rowHeight = ROW_HEIGHT;
@@ -26,6 +27,11 @@ export class VirtualVideoList {
     this.resize = new ResizeObserver(() => this.schedule()); this.resize.observe(viewport);
   }
   update(flags: PlaybackView): void { this.flags = flags; this.schedule(); }
+  setVisible(visible: boolean): void {
+    this.visible = visible;
+    if (!visible && this.frame !== undefined) { cancelAnimationFrame(this.frame); this.frame = undefined; }
+    if (visible) this.schedule();
+  }
   setDensity(density: "comfortable" | "compact"): void {
     this.rowHeight = density === "compact" ? COMPACT_ROW_HEIGHT : ROW_HEIGHT;
     this.viewport.dataset.density = density; this.schedule();
@@ -35,6 +41,11 @@ export class VirtualVideoList {
     this.viewport.scrollTop = Math.max(0, top); this.schedule();
   }
   reveal(index: number): void { this.scrollTo(index * this.rowHeight - (this.viewport.clientHeight - this.rowHeight) / 2); }
+  setScrubbing(id: string, scrubbing: boolean): void {
+    const row = this.rows.get(id); if (!row) return;
+    if (scrubbing) row.seek.dataset.scrubbing = "true";
+    else { delete row.seek.dataset.scrubbing; row.signature = ""; this.schedule(); }
+  }
   previewPosition(id: string, position: number): void {
     const row = this.rows.get(id), record = this.model.records.get(id);
     if (!row || !record) return;
@@ -44,7 +55,7 @@ export class VirtualVideoList {
     row.seek.setAttribute("aria-valuetext", `${formatTime(position)} / ${formatTime(record.duration)}`);
   }
   private schedule(): void {
-    if (this.frame !== undefined) return;
+    if (!this.visible || this.frame !== undefined) return;
     this.frame = requestAnimationFrame(() => { this.frame = undefined; this.render(); });
   }
   private render(): void {
@@ -55,7 +66,7 @@ export class VirtualVideoList {
     const first = Math.max(0, Math.min(ids.length - visible, Math.floor(this.viewport.scrollTop / this.rowHeight)));
     const start = Math.max(0, first - OVERSCAN), end = Math.min(ids.length, first + visible + OVERSCAN);
     const wanted = new Set(ids.slice(start, end));
-    for (const [id, row] of this.rows) if (!wanted.has(id)) { row.element.remove(); this.rows.delete(id); }
+    for (const [id, row] of this.rows) if (!wanted.has(id) && row.seek.dataset.scrubbing !== "true") { row.element.remove(); this.rows.delete(id); }
     let cursor = this.content.firstElementChild;
     for (let index = start; index < end; index++) {
       const id = ids[index]!;
@@ -71,6 +82,7 @@ export class VirtualVideoList {
     if (this.viewport.dataset.benchmark === "true") {
       this.viewport.dataset.created = String(this.metrics.created); this.viewport.dataset.patched = String(this.metrics.patched);
       this.viewport.dataset.frames = String(this.metrics.frames); this.viewport.dataset.sorts = String(this.model.fullSorts);
+      this.viewport.dataset.moves = String(this.model.moves);
     }
   }
   private createRow(id: string): Row {
