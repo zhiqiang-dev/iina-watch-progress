@@ -158,7 +158,8 @@ function fileLoaded(): void {
     selectedFolder = folderPath(path);
     globalAPI.postMessage(MSG.begin, { session, path });
   }
-  mpv.refreshPlayback(); refreshMedia(); syncPlaylist();
+  mpv.refreshPlayback(); refreshMedia();
+  if (!windowLoaded) initializeWindow(); else syncPlaylist();
   sample();
   // Some IINA versions dispatch their file-loaded callback after playback-restart.
   if (pendingResume) setTimeout(seekPending, 200);
@@ -349,15 +350,18 @@ iina.event.on("iina.window-will-close", () => {
   detachedReady = false;
   endSession();
   closing = true;
+  windowLoaded = false;
   connected = false;
   listed = false;
   pendingResume = undefined;
   if (detachedLoaded) standaloneWindow.close();
+  detachedLoaded = false;
   globalAPI.postMessage(MSG.disconnect, {});
 });
 iina.event.on("mpv.shutdown", () => {
   // Never query mpv during shutdown; only flush the global instance's cached data.
   closing = true;
+  windowLoaded = false;
   connected = false;
   listed = false;
   sidebarReady = false;
@@ -368,6 +372,10 @@ iina.event.on("mpv.shutdown", () => {
   globalAPI.postMessage(MSG.disconnect, {});
 });
 iina.menu.addItem(iina.menu.item("显示观看进度", () => {
+  if (!windowLoaded && currentPath()) {
+    closing = false; initializeWindow();
+    if (!session) fileLoaded();
+  }
   if (windowLoaded) { sidebar.show(); sidebarHostVisible = true; sidebarVisible = true; if (sidebarReady) postView(sidebar); }
 }));
 iina.menu.addItem(iina.menu.item("独立观看列表", detach));

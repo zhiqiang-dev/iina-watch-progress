@@ -25,7 +25,7 @@ function runtime(options: { loadEvents?: boolean } = {}) {
   let requestDepth = 0;
   const ticks: (() => void)[] = [];
   const autosaves = new Map<string, { callback: () => void; ms: number }>();
-  let nextAutosave = 0, writes = 0;
+  let nextAutosave = 0, writes = 0, viewLoads = 0;
   const commands: unknown[][] = [];
   const plays: number[] = [];
   const errors: unknown[] = [];
@@ -66,7 +66,7 @@ function runtime(options: { loadEvents?: boolean } = {}) {
     setTimeout: (callback: () => void) => { globalTimers.push(callback); return "global-timeout"; },
   });
   const ui = {
-    loadFile: () => viewHandlers.clear(),
+    loadFile: () => { viewLoads++; viewHandlers.clear(); },
     onMessage: (name: string, handler: (data: unknown) => void) => viewHandlers.set(name, handler),
     postMessage: (name: string, data: ViewState) => {
       if (name !== MSG.view) return;
@@ -118,6 +118,7 @@ function runtime(options: { loadEvents?: boolean } = {}) {
     fire("iina.file-loaded");
   }
   return { files, properties, fire, hooks, errors, plays, commands, viewMessages, scans, reads, playerWindow,
+    viewLoads: () => viewLoads,
     autosaves, writes: () => writes,
     checkpoint: () => { for (const { callback } of autosaves.values()) callback(); deliver(); },
     tick: () => { ticks.forEach(tick => tick()); deliver(); },
@@ -132,6 +133,16 @@ function runtime(options: { loadEvents?: boolean } = {}) {
 }
 
 describe("bundled IINA main/global integration", () => {
+  it("reattaches the sidebar when a closed player is reused for another file", () => {
+    const app = runtime(); expect(app.viewLoads()).toBe(1);
+    app.fire("iina.window-will-close");
+    app.properties.path = "/Course/02.mp4"; app.properties["time-pos"] = 30;
+    app.fire("iina.file-loaded"); app.ready();
+    expect(app.viewLoads()).toBe(2); expect(app.state().activeId).toBe(mediaId("/Course/02.mp4"));
+    app.properties["time-pos"] = 31; app.tick();
+    expect(app.state().videos.find(record => record.id === mediaId("/Course/02.mp4"))?.position).toBe(31);
+    expect(app.errors).toEqual([]);
+  });
   it("keeps tracking and saving when the view is hidden, then sends the latest full state", () => {
     const app = runtime(); app.action({ type: "visibility", visible: false }); const messages = app.viewMessages.length;
     app.properties["time-pos"] = 20; app.tick(); app.checkpoint();
