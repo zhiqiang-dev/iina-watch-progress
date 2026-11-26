@@ -75,6 +75,17 @@ describe("bundled sidebar interactions", () => {
     expect(app.el<HTMLButtonElement>("complete-selected").disabled).toBe(true);
     expect(app.el("list").dataset.frames).toBe(before.frames);
   });
+  it("refreshes completion counts, continue selection and navigation when a video's status changes", () => {
+    const app = sidebar();
+    app.patch({ videos: [{ ...app.state.videos[3]!, status: "completed", progress: 1, completionSource: "manual" }] });
+    expect(app.el("completed").textContent).toBe("4/1000");
+    expect(app.el("selected-percent").textContent).toBe("已完成");
+    expect(app.el<HTMLButtonElement>("complete-selected").disabled).toBe(true);
+    app.el("next-unfinished").click(); expect(app.el("selected-name").textContent).toBe("005 课程.mp4");
+    app.patch({ settings: { completionThreshold: 0.8, saveIntervalSeconds: 30 } });
+    expect(app.el<HTMLSelectElement>("threshold").value).toBe("0.8");
+    expect(app.el<HTMLSelectElement>("save-interval").value).toBe("30");
+  });
   it("does not draw visible rows for an offscreen playing item or repeat navigation work on wheel events", () => {
     const app = sidebar(); app.key("list", "End"); app.flushFrames();
     const before = { ...app.el("list").dataset };

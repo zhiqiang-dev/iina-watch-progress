@@ -1,6 +1,6 @@
 {
   "name": "iina-watch-progress",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "Persistent local video progress for IINA",
   "type": "module",
@@ -13,7 +13,8 @@
     "check": "pnpm typecheck && pnpm test && pnpm build",
     "package": "pnpm build && node scripts/package.mjs",
     "preview": "node scripts/preview.mjs",
-    "benchmark": "node scripts/benchmark.mjs"
+    "benchmark": "node scripts/benchmark.mjs",
+    "benchmark:queries": "node scripts/benchmark-queries.mjs"
   },
   "devDependencies": {
     "@types/jsdom": "21.1.7",

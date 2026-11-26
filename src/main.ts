@@ -254,7 +254,7 @@ function action(value: unknown): void {
         break;
       case "folder":
         if (typeof value.path === "string") {
-          const path = normalizePath(value.path);
+          const path = value.path === "/" ? "/" : normalizePath(value.path);
           if (!path || path !== value.path) break;
           // Recent folders come from the WebView's local browsing memory. Verify
           // the directory before changing selection; browsing never opens a video.
