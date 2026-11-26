@@ -12,6 +12,7 @@ export class VideoListModel {
   fullSorts = 0;
   orderRevision = 0;
   moves = 0;
+  private orderedIds?: string[];
   private positions = new Map<string, number>();
   private names = new Map<string, { source: string; normalized: string }>();
   private words: string[] = [];
@@ -24,6 +25,7 @@ export class VideoListModel {
   indexOf(id?: string): number { return id ? this.positions.get(id) ?? -1 : -1; }
   get continueRecord(): VideoRecord | undefined { return this.continueId ? this.records.get(this.continueId) : undefined; }
   replace(records: VideoRecord[]): void {
+    this.orderedIds = undefined;
     this.records.clear();
     this.names.clear();
     for (const record of records) this.records.set(record.id, record);
@@ -34,6 +36,7 @@ export class VideoListModel {
   setQuery(filter: VideoFilter, search: string, sort: VideoSort): void {
     search = search.normalize("NFKC").trim().toLocaleLowerCase();
     if (filter === this.filter && search === this.search && sort === this.sort) return;
+    if (sort !== this.sort) this.orderedIds = undefined;
     this.filter = filter; this.search = search; this.sort = sort;
     this.words = search ? search.split(/\s+/) : [];
     this.rebuild();
@@ -51,6 +54,7 @@ export class VideoListModel {
       const keyChanged = old.fileName !== record.fileName ||
         (this.sort === "progress" && old.progress !== record.progress) ||
         (this.sort === "recent" && old.lastPlayedAt !== record.lastPlayedAt);
+      if (keyChanged) this.orderedIds = undefined;
       if (wasVisible === isVisible && (!isVisible || !keyChanged)) continue;
       const previousIndex = this.indexOf(record.id);
       if (wasVisible && isVisible &&
@@ -98,8 +102,11 @@ export class VideoListModel {
     if (record.status === "watching") this.watching += delta;
   }
   private rebuild(): void {
-    this.fullSorts++;
-    this.ids = [...this.records.values()].filter(record => this.matches(record)).sort((a, b) => this.compare(a, b)).map(record => record.id);
+    if (!this.orderedIds) {
+      this.fullSorts++;
+      this.orderedIds = [...this.records.values()].sort((a, b) => this.compare(a, b)).map(record => record.id);
+    }
+    this.ids = this.orderedIds.filter(id => this.matches(this.records.get(id)!));
     this.positions.clear(); this.ids.forEach((id, index) => this.positions.set(id, index)); this.orderRevision++;
   }
 }

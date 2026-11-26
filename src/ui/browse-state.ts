@@ -35,7 +35,9 @@ export class BrowseStateStore {
   get(folder: string): BrowseState | undefined { const state = this.memory.get(folder) ?? this.read().get(folder); return state ? { ...state } : undefined; }
   set(folder: string, state: BrowseState): void {
     if (!folder || !valid(state)) return;
-    const entries = this.read(); entries.delete(folder); entries.set(folder, { ...state });
+    const entries = this.read();
+    if (JSON.stringify(entries.get(folder)) === JSON.stringify(state)) { this.memory = entries; return; }
+    entries.delete(folder); entries.set(folder, { ...state });
     this.memory = new Map([...entries].slice(-40));
     try { this.storage?.setItem(KEY, JSON.stringify([...this.memory])); } catch { /* Keep a session-only fallback. */ }
   }

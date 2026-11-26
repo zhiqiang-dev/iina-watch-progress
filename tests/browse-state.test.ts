@@ -2,6 +2,16 @@ import { describe, expect, it } from "vitest";
 import { BrowseStateStore, DEFAULT_BROWSE, captureAnchor, restoreAnchor } from "../src/ui/browse-state";
 
 describe("folder browsing memory", () => {
+  it("does not write unchanged preferences and preserves updates from another view", () => {
+    let wire: string | null = null, writes = 0;
+    const storage = { getItem: () => wire, setItem: (_key: string, value: string) => { wire = value; writes++; } };
+    const a = new BrowseStateStore(storage), b = new BrowseStateStore(storage);
+    a.set("/A", DEFAULT_BROWSE); b.set("/B", DEFAULT_BROWSE);
+    for (let index = 0; index < 20; index++) a.set("/A", { ...DEFAULT_BROWSE });
+    expect(writes).toBe(2);
+    expect(new BrowseStateStore(storage).get("/B")).toEqual(DEFAULT_BROWSE);
+    a.set("/A", { ...DEFAULT_BROWSE, scrollTop: 100 }); expect(writes).toBe(3);
+  });
   it("restores separate folders across views and preserves an anchor after insertion", () => {
     const data = new Map<string, string>();
     const storage = { getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => { data.set(key, value); } };

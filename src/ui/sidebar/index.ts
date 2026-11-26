@@ -5,6 +5,7 @@ import { DEFAULT_SAVE_INTERVAL } from "../../models/settings";
 import { BrowseStateStore, DEFAULT_BROWSE, captureAnchor, restoreAnchor, type BrowseState } from "../browse-state";
 import { positionRatio, remainingTime } from "../progress-presentation";
 import { ViewUpdateBuffer } from "../view-update-buffer";
+import { SearchInput } from "../search-input";
 
 interface WebViewBridge {
   postMessage(name: string, data?: unknown): void;
@@ -30,6 +31,7 @@ const browseStore = new BrowseStateStore((() => { try { return window.localStora
 let follow = true, lastActiveId: string | undefined, pendingFollow: string | undefined, locateRequested = false;
 let pendingRestore: BrowseState | undefined, rememberTimer: number | undefined;
 let locateBlocked = false, revealedQuery: { filter: VideoFilter; search: string; sort: VideoSort } | undefined;
+const searchInput = new SearchInput(() => updateQuery());
 function rememberNow(): void {
   if (rememberTimer !== undefined) window.clearTimeout(rememberTimer); rememberTimer = undefined;
   if (!state?.selectedFolder || !model.total || pendingRestore) return;
@@ -55,7 +57,10 @@ function renderNavigation(): void {
   text("locate-hint", revealedQuery ? "正在临时显示当前视频，原筛选已保留。" : "当前视频被搜索或状态筛选隐藏。");
   el("reveal-current").hidden = !!revealedQuery; el("restore-query").hidden = !revealedQuery;
 }
-function pauseFollow(): void { follow = false; pendingFollow = undefined; renderNavigation(); rememberSoon(); }
+function pauseFollow(): void {
+  if (!follow && !pendingFollow) return;
+  follow = false; pendingFollow = undefined; renderNavigation(); rememberSoon();
+}
 function locateCurrent(explicit = true): void {
   const id = state?.activeId; if (!id) return;
   if (explicit) follow = true;
@@ -146,6 +151,7 @@ function render(next: ViewState): void {
   } else {
     if (state?.selectedFolder !== next.selectedFolder) {
       rememberNow();
+      searchInput.cancel();
       const saved = next.selectedFolder ? browseStore.get(next.selectedFolder) : undefined;
       const browsing = saved ?? DEFAULT_BROWSE;
       selectedId = browsing.selectedId; filter = browsing.filter; search = browsing.search; sort = browsing.sort; follow = browsing.follow; density = browsing.density;
@@ -182,6 +188,7 @@ function render(next: ViewState): void {
   else if (pendingFollow && model.records.has(pendingFollow)) { pendingFollow = undefined; locateCurrent(false); }
 }
 function updateQuery(manual = true): void {
+  searchInput.cancel();
   if (manual) { pauseFollow(); revealedQuery = undefined; }
   model.setQuery(filter, search, sort); virtual.scrollTo(0); queryControls(); renderListState(); renderNavigation(); rememberSoon();
 }
@@ -223,7 +230,10 @@ for (const button of document.querySelectorAll<HTMLButtonElement>("[data-filter]
   for (const sibling of document.querySelectorAll("[data-filter]")) sibling.setAttribute("aria-selected", String(sibling === button));
   updateQuery();
 });
-el("search").addEventListener("input", event => { search = (event.target as HTMLInputElement).value; updateQuery(); });
+el("search").addEventListener("input", event => { search = (event.target as HTMLInputElement).value; searchInput.input(); });
+el("search").addEventListener("compositionstart", () => searchInput.compositionStart());
+el("search").addEventListener("compositionend", () => { search = el<HTMLInputElement>("search").value; searchInput.compositionEnd(); });
+el("search").addEventListener("keydown", event => { if (event.key === "Enter" && !event.isComposing) searchInput.flush(); });
 el("sort").addEventListener("change", event => { sort = (event.target as HTMLSelectElement).value as VideoSort; updateQuery(); });
 el("density").addEventListener("change", event => {
   const anchor = captureAnchor(model.ids, list.scrollTop, virtual.rowHeight);

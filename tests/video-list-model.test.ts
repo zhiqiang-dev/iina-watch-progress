@@ -10,11 +10,32 @@ function fixture(count = 100): VideoRecord[] {
 }
 const collator = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });
 function reference(records: VideoRecord[], filter: VideoFilter, search: string, sort: VideoSort): string[] {
-  return records.filter(record => (filter === "all" || record.status === filter) && record.fileName.toLocaleLowerCase().includes(search))
+  const words = search.normalize("NFKC").trim().toLocaleLowerCase().split(/\s+/);
+  return records.filter(record => (filter === "all" || record.status === filter) && words.every(word => record.fileName.normalize("NFKC").toLocaleLowerCase().includes(word)))
     .sort((a, b) => (sort === "progress" ? b.progress - a.progress : sort === "recent" ? b.lastPlayedAt - a.lastPlayedAt : 0) ||
       collator.compare(a.fileName, b.fileName) || a.id.localeCompare(b.id)).map(record => record.id);
 }
 describe("incremental video list", () => {
+  it("reuses sorting for changing searches/filters and invalidates changed sort keys including hidden records", () => {
+    const records = fixture(1000), model = new VideoListModel(); model.replace(records);
+    for (const filter of ["all", "completed", "watching", "unwatched"] as VideoFilter[]) {
+      for (const search of ["视频", "视频 1", "视频 12", ""]) {
+        model.setQuery(filter, search, "name");
+        expect(model.ids).toEqual(reference(records, filter, search, "name"));
+      }
+    }
+    expect(model.fullSorts).toBe(1);
+    model.setQuery("all", "", "recent"); expect(model.fullSorts).toBe(2);
+    model.setQuery("all", "不存在", "recent");
+    records[0] = { ...records[0]!, lastPlayedAt: 99999 }; model.apply([records[0]]);
+    model.setQuery("all", "", "recent"); expect(model.ids[0]).toBe(records[0].id);
+    expect(model.fullSorts).toBe(3);
+    model.setQuery("all", "", "name");
+    records[0] = { ...records[0], fileName: "最后一节.mp4" }; model.apply([records[0]]);
+    model.setQuery("all", "", "name");
+    model.setQuery("watching", "", "name");
+    expect(model.ids).toEqual(reference(records, "watching", "", "name"));
+  });
   it("does not move rows when updated progress/recent values remain between their neighbors", () => {
     const records = fixture(1000), model = new VideoListModel(); model.replace(records); model.setQuery("all", "", "recent");
     const top = model.records.get(model.ids[0]!)!, revision = model.orderRevision;
