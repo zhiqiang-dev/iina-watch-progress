@@ -33,6 +33,7 @@ export class BrowseStateStore {
     return new Map(this.memory);
   }
   get(folder: string): BrowseState | undefined { const state = this.memory.get(folder) ?? this.read().get(folder); return state ? { ...state } : undefined; }
+  recentFolders(): string[] { return [...this.read().keys()].reverse(); }
   set(folder: string, state: BrowseState): void {
     if (!folder || !valid(state)) return;
     const entries = this.read();

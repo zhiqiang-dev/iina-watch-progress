@@ -36,7 +36,9 @@
         <button role="tab" data-filter="watching" aria-selected="false">观看中</button>
         <button role="tab" data-filter="unwatched" aria-selected="false">未观看</button>
       </div>
-      <div class="list-toolbar"><span id="list-count">0 个视频</span><label><span class="sr-only">列表密度</span><select id="density" aria-label="列表密度"><option value="comfortable">舒适</option><option value="compact">紧凑</option></select></label><label><span class="sr-only">排序方式</span><select id="sort" aria-label="排序方式"><option value="name">文件名</option><option value="progress">观看进度</option><option value="recent">最近观看</option></select></label></div>
+      <div class="list-toolbar"><span id="list-count">0 个视频</span><button id="previous-unfinished" title="选择上一个未完成视频，回车播放" aria-label="上一个未完成视频">↑</button><button id="next-unfinished" title="选择下一个未完成视频，回车播放" aria-label="下一个未完成视频">↓</button><button id="jump-number" title="按文件名开头的编号定位（⌘J）">编号</button><label><span class="sr-only">列表密度</span><select id="density" aria-label="列表密度"><option value="comfortable">舒适</option><option value="compact">紧凑</option></select></label><label><span class="sr-only">排序方式</span><select id="sort" aria-label="排序方式"><option value="name">文件名</option><option value="progress">观看进度</option><option value="recent">最近观看</option></select></label></div>
+      <form id="jump-form" class="jump-form" hidden><label for="video-number">文件名编号</label><input id="video-number" inputmode="numeric" autocomplete="off" placeholder="例如 058" aria-label="文件名编号"><button type="submit">定位</button><button id="cancel-jump" type="button" aria-label="关闭编号定位">×</button></form>
+      <div id="navigation-message" class="navigation-message" role="status" hidden></div>
     </header>
     <div id="notice" class="notice" role="status" hidden></div>
     <section id="list" class="video-list" role="listbox" aria-label="视频列表，使用方向键选择，回车播放，空格播放或暂停" tabindex="0"><div id="list-content"></div></section>

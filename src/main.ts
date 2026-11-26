@@ -22,6 +22,7 @@ let listed = false;
 let viewMetadata = "";
 let lastReading: PlaybackSample | undefined;
 let folders: FolderOption[] = [];
+const browsedFolders = new Set<string>();
 let selectedFolder: string | undefined;
 let activePath: string | undefined;
 let session: string | undefined;
@@ -90,6 +91,7 @@ function syncPlaylist(forceScan = false): void {
   try { queued = playlistItems(iina.playlist.list(), mpv.string("working-directory")); }
   catch (error) { scanError = `无法读取播放列表：${String(error)}`; postView(); return; }
   const paths = new Set(queued.map(item => folderPath(item.path)));
+  for (const path of browsedFolders) paths.add(path);
   if (activePath && isVideo(activePath)) paths.add(folderPath(activePath));
   folders = [...paths].sort().map(path => ({ path, name: fileName(path) || "/" }));
   if (!selectedFolder || !paths.has(selectedFolder))
@@ -251,8 +253,15 @@ function action(value: unknown): void {
         if (activePath) { selectedFolder = folderPath(activePath); syncPlaylist(); }
         break;
       case "folder":
-        if (typeof value.path === "string" && folders.some(folder => folder.path === value.path)) {
-          selectedFolder = value.path;
+        if (typeof value.path === "string") {
+          const path = normalizePath(value.path);
+          if (!path || path !== value.path) break;
+          // Recent folders come from the WebView's local browsing memory. Verify
+          // the directory before changing selection; browsing never opens a video.
+          if (!folders.some(folder => folder.path === path)) folderCache.list(path, Date.now());
+          browsedFolders.delete(path); browsedFolders.add(path);
+          if (browsedFolders.size > 40) browsedFolders.delete(browsedFolders.values().next().value!);
+          selectedFolder = path;
           syncPlaylist();
         }
         break;

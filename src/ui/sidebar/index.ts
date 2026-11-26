@@ -6,6 +6,8 @@ import { BrowseStateStore, DEFAULT_BROWSE, captureAnchor, restoreAnchor, type Br
 import { positionRatio, remainingTime } from "../progress-presentation";
 import { ViewUpdateBuffer } from "../view-update-buffer";
 import { SearchInput } from "../search-input";
+import { RenderSections } from "../render-sections";
+import { adjacentUnfinished, numberedVideos } from "../list-navigation";
 
 interface WebViewBridge {
   postMessage(name: string, data?: unknown): void;
@@ -19,6 +21,15 @@ function disable(id: string, value: boolean): void { const node = el<HTMLButtonE
 const list = el("list"), model = new VideoListModel();
 if (window.wpPreview && new URLSearchParams(location.search).has("benchmark")) list.dataset.benchmark = "true";
 const virtual = new VirtualVideoList(list, el("list-content"), model);
+const sections = new RenderSections();
+function changedSection(section: string, dependencies: readonly unknown[]): boolean {
+  if (!sections.changed(section, dependencies)) return false;
+  if (list.dataset.benchmark === "true") {
+    const key = `render${section}`;
+    list.dataset[key] = String(Number(list.dataset[key] ?? 0) + 1);
+  }
+  return true;
+}
 const hiddenUpdates = new ViewUpdateBuffer();
 const completedCount = el("completed").firstChild!, completedTotal = el("completed").querySelector("small")!, rateCount = el("rate").firstChild!;
 let state: ViewSnapshot | undefined;
@@ -49,13 +60,19 @@ function queryControls(): void {
 }
 function renderNavigation(): void {
   const active = state?.activeId ? model.records.get(state.activeId) : undefined;
+  const inList = model.indexOf(state?.activeId) >= 0;
+  if (!changedSection("Navigation", [state?.activeId, state?.paused, active?.fileName, active?.filePath, follow, inList, locateBlocked, !!revealedQuery, selectedId, model.navigationRevision])) return;
   text("current-name", active ? `${state?.paused ? "已暂停" : "正在播放"} · ${active.fileName}` : state?.activeId ? "当前视频在其他文件夹" : "尚未播放视频");
   el("current-name").title = active?.filePath ?? ""; disable("locate-current", !state?.activeId);
   text("follow-current", follow ? "跟随开" : "跟随关"); el("follow-current").setAttribute("aria-pressed", String(follow));
   if (model.indexOf(state?.activeId) >= 0) locateBlocked = false;
   el("locate-notice").hidden = !locateBlocked && !revealedQuery;
-  text("locate-hint", revealedQuery ? "正在临时显示当前视频，原筛选已保留。" : "当前视频被搜索或状态筛选隐藏。");
+  text("locate-hint", revealedQuery ? "正在临时显示定位的视频，原筛选已保留。" : "当前视频被搜索或状态筛选隐藏。");
   el("reveal-current").hidden = !!revealedQuery; el("restore-query").hidden = !revealedQuery;
+  const from = model.indexOf(selectedId ?? state?.activeId);
+  disable("previous-unfinished", !adjacentUnfinished(model.ids, model.records, from, -1));
+  disable("next-unfinished", !adjacentUnfinished(model.ids, model.records, from, 1));
+  disable("jump-number", !model.total);
 }
 function pauseFollow(): void {
   if (!follow && !pendingFollow) return;
@@ -70,9 +87,10 @@ function locateCurrent(explicit = true): void {
   selectedId = id; virtual.reveal(index); renderSelection(); updateRows(); renderNavigation(); rememberSoon();
 }
 function send(action: UIAction): void { window.iina?.postMessage(MSG.action, action); }
-function updateRows(): void { virtual.update({ selectedId, activeId: state?.activeId, paused: state?.paused ?? true }); }
+function updateRows(changedIds?: string[]): void { virtual.update({ selectedId, activeId: state?.activeId, paused: state?.paused ?? true }, changedIds); }
 function renderSelection(): void {
   const record = selectedId ? model.records.get(selectedId) : undefined;
+  if (!changedSection("Selection", [record, state?.activeId, state?.storage.readOnly, selectedId ? mediaCache.get(selectedId) : undefined, !!scrubbing])) return;
   el("selection").hidden = !record;
   if (!record) return;
   const percent = Math.floor(record.progress * 100);
@@ -103,6 +121,12 @@ function renderDetails(): void {
 }
 function renderOverview(): void {
   if (!state) return;
+  if (changedSection("Stats", [model.total, model.completed, model.watching])) renderStats();
+  if (changedSection("Continue", [model.continueRecord, model.total])) renderContinue();
+  if (changedSection("Storage", [state.storage.readOnly, state.storage.error, state.storage.dirty, state.storage.lastSavedAt, state.storage.recovered,
+    state.scanError, state.settings.completionThreshold, state.settings.saveIntervalSeconds])) renderStorage();
+}
+function renderStats(): void {
   const rate = model.total ? model.completed / model.total : 0;
   const number = String(model.completed), total = `/${model.total}`, rateText = rate > 0 && rate < 0.001 ? "<0.1" : String(Math.round(rate * 1000) / 10);
   if (completedCount.nodeValue !== number) completedCount.nodeValue = number;
@@ -110,10 +134,15 @@ function renderOverview(): void {
   text("watching", String(model.watching));
   if (rateCount.nodeValue !== rateText) rateCount.nodeValue = rateText;
   width("overall-progress", `${rate * 100}%`);
+}
+function renderContinue(): void {
   const latest = model.continueRecord;
   disable("continue", !latest);
   text("continue-label", latest?.lastPlayedAt ? "继续观看" : latest ? "开始观看" : model.total ? "全部已看完" : "继续观看");
   text("continue-hint", latest ? `${latest.fileName}${latest.position > 0 ? ` · ${time(latest.position)}` : ""}` : model.total ? "这个文件夹的所有视频均已完成" : "打开视频文件夹，开始记录观看进度");
+}
+function renderStorage(): void {
+  if (!state) return;
   const notice = [state.storage.error, state.scanError, state.storage.recovered ? "已从有效快照恢复记录。" : undefined].filter(Boolean).join(" ");
   el("notice").hidden = !notice; text("notice", notice);
   text("storage-status", state.storage.readOnly ? "记录只读" : state.storage.error ? "记录未保存" : state.storage.dirty ? "等待保存…" : state.storage.lastSavedAt ? "观看记录已保存" : "尚无观看记录");
@@ -127,37 +156,50 @@ function renderOverview(): void {
 }
 function renderListState(): void {
   const count = model.ids.length;
+  if (!changedSection("ListState", [count, model.total])) return;
   text("list-count", `${count} 个视频${count !== model.total ? ` / 共 ${model.total} 个` : ""}`);
   list.hidden = count === 0; el("empty").hidden = count > 0;
   text("empty-title", model.total ? "没有匹配的视频" : "还没有视频");
   text("empty-description", model.total ? "试试其他文件名，或切换观看状态。" : "在 IINA 中打开本地视频或文件夹，观看记录会自动出现在这里。");
-  updateRows(); renderSelection();
 }
 function render(next: ViewState): void {
   let restoredFolder = false;
+  let changedIds: string[] | undefined;
+  if (next.kind === "patch" && (!state || (next.scope !== undefined && next.scope !== state.scope))) return;
   if (next.media) {
-    mediaCache.set(next.media.id, next.media);
-    if (mediaCache.size > 100) mediaCache.delete(mediaCache.keys().next().value!);
+    const old = mediaCache.get(next.media.id);
+    if (!old || old.width !== next.media.width || old.height !== next.media.height || old.codec !== next.media.codec) {
+      mediaCache.set(next.media.id, next.media);
+      if (mediaCache.size > 100) mediaCache.delete(mediaCache.keys().next().value!);
+    }
   }
   if (next.kind === "patch") {
     if (!state || (next.scope !== undefined && next.scope !== state.scope)) return;
     state = { ...state, storage: next.storage, settings: next.settings, activeId: next.activeId ?? undefined, paused: next.paused, scanError: next.scanError ?? undefined };
     const anchor = captureAnchor(model.ids, list.scrollTop, virtual.rowHeight), revision = model.orderRevision;
-    model.apply(next.videos);
+    const changed = next.videos.filter(record => {
+      const old = model.records.get(record.id);
+      return old && (Object.keys(record).length !== Object.keys(old).length ||
+        (Object.keys(record) as (keyof typeof record)[]).some(key => record[key] !== old[key]));
+    });
+    changedIds = changed.map(record => record.id);
+    model.apply(changed);
     if (revision !== model.orderRevision) {
+      changedIds = undefined;
       const index = model.indexOf(anchor.anchorId);
       virtual.scrollTo(index >= 0 ? index * virtual.rowHeight + anchor.anchorOffset : anchor.scrollTop);
     }
   } else {
     if (state?.selectedFolder !== next.selectedFolder) {
       rememberNow();
-      searchInput.cancel();
+      searchInput.reset();
       const saved = next.selectedFolder ? browseStore.get(next.selectedFolder) : undefined;
       const browsing = saved ?? DEFAULT_BROWSE;
       selectedId = browsing.selectedId; filter = browsing.filter; search = browsing.search; sort = browsing.sort; follow = browsing.follow; density = browsing.density;
       virtual.setDensity(density);
       pendingRestore = saved; restoredFolder = !!saved; pendingFollow = undefined;
       revealedQuery = undefined; locateBlocked = false; list.scrollTop = 0;
+      el("jump-form").hidden = true; navigationMessage();
       model.setQuery(filter, search, sort); queryControls();
     }
     state = next;
@@ -165,14 +207,21 @@ function render(next: ViewState): void {
     model.replace(next.videos.filter(record => ids.has(record.id)));
     text("folder-title", next.selectedFolder ? next.folders.find(folder => folder.path === next.selectedFolder)?.name ?? "视频课程" : "视频课程");
     el("folder-title").title = next.selectedFolder ?? "";
-    const key = JSON.stringify(next.folders);
+    const recentFolders = browseStore.recentFolders().filter(path => !next.folders.some(folder => folder.path === path));
+    const key = JSON.stringify([next.folders, recentFolders]);
     if (key !== folderKey) {
       folderKey = key;
-      el<HTMLSelectElement>("folder").replaceChildren(...next.folders.map(folder => {
+      const options: (HTMLOptionElement | HTMLOptGroupElement)[] = next.folders.map(folder => {
         const option = document.createElement("option"); option.value = folder.path; option.textContent = folder.path; return option;
-      }));
+      });
+      if (recentFolders.length) {
+        const group = document.createElement("optgroup"); group.label = "最近浏览的文件夹";
+        group.append(...recentFolders.map(path => { const option = document.createElement("option"); option.value = path; option.textContent = path; return option; }));
+        options.push(group);
+      }
+      el<HTMLSelectElement>("folder").replaceChildren(...options);
     }
-    el<HTMLSelectElement>("folder").value = next.selectedFolder ?? ""; el<HTMLSelectElement>("folder").disabled = next.folders.length < 2;
+    el<HTMLSelectElement>("folder").value = next.selectedFolder ?? ""; el<HTMLSelectElement>("folder").disabled = next.folders.length + recentFolders.length < 2;
   }
   if (model.total && (!selectedId || !model.records.has(selectedId))) selectedId = state.activeId && model.records.has(state.activeId) ? state.activeId : model.ids[0];
   if (state.activeId && state.activeId !== lastActiveId) {
@@ -182,7 +231,7 @@ function render(next: ViewState): void {
   if (scrubbing && scrubbing.id !== state.activeId) {
     virtual.setScrubbing(scrubbing.id, false); scrubbing = undefined; delete el<HTMLInputElement>("selected-seek").dataset.scrubbing;
   }
-  renderOverview(); renderListState(); renderNavigation();
+  renderOverview(); renderListState(); renderSelection(); renderNavigation(); updateRows(changedIds);
   if (pendingRestore && model.total) { virtual.scrollTo(restoreAnchor(model.ids, pendingRestore, virtual.rowHeight)); pendingRestore = undefined; }
   if (locateRequested && state.activeId && model.records.has(state.activeId)) { locateRequested = false; locateCurrent(); }
   else if (pendingFollow && model.records.has(pendingFollow)) { pendingFollow = undefined; locateCurrent(false); }
@@ -190,7 +239,7 @@ function render(next: ViewState): void {
 function updateQuery(manual = true): void {
   searchInput.cancel();
   if (manual) { pauseFollow(); revealedQuery = undefined; }
-  model.setQuery(filter, search, sort); virtual.scrollTo(0); queryControls(); renderListState(); renderNavigation(); rememberSoon();
+  model.setQuery(filter, search, sort); virtual.scrollTo(0); queryControls(); renderListState(); renderSelection(); updateRows(); renderNavigation(); rememberSoon();
 }
 list.addEventListener("wheel", pauseFollow, { passive: true });
 list.addEventListener("touchmove", pauseFollow, { passive: true });
@@ -200,7 +249,7 @@ list.addEventListener("click", event => {
   const target = event.target as HTMLElement, row = target.closest<HTMLElement>(".video-row");
   if (target.closest(".row-seek")) return;
   if (!row?.dataset.id) return;
-  selectedId = row.dataset.id; list.focus({ preventScroll: true }); updateRows(); renderSelection();
+  selectedId = row.dataset.id; list.focus({ preventScroll: true }); updateRows(); renderSelection(); renderNavigation();
   rememberSoon();
   if (target.closest(".row-icon")) send({ type: "toggle-playback", id: selectedId });
 });
@@ -223,7 +272,7 @@ list.addEventListener("keydown", event => {
   selectedId = model.ids[index];
   if (index * virtual.rowHeight < list.scrollTop) virtual.scrollTo(index * virtual.rowHeight);
   else if ((index + 1) * virtual.rowHeight > list.scrollTop + list.clientHeight) virtual.scrollTo((index + 1) * virtual.rowHeight - list.clientHeight);
-  updateRows(); renderSelection(); rememberSoon();
+  updateRows(); renderSelection(); renderNavigation(); rememberSoon();
 });
 for (const button of document.querySelectorAll<HTMLButtonElement>("[data-filter]")) button.addEventListener("click", () => {
   filter = button.dataset.filter as VideoFilter;
@@ -264,13 +313,56 @@ document.addEventListener("change", event => {
 });
 document.addEventListener("pointercancel", event => {
   const target = seekTarget(event.target); if (!target) return;
-  delete target.input.dataset.scrubbing; virtual.setScrubbing(target.id, false); scrubbing = undefined; updateRows(); renderSelection();
+  delete target.input.dataset.scrubbing; virtual.setScrubbing(target.id, false); scrubbing = undefined; sections.invalidate("Selection"); updateRows(); renderSelection();
 });
 document.addEventListener("pointermove", event => {
   const target = seekTarget(event.target); if (!target) return;
   const bounds = target.input.getBoundingClientRect();
   const seconds = Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width)) * Number(target.input.max);
   target.input.title = time(seconds);
+});
+function navigationMessage(message = ""): void { text("navigation-message", message); el("navigation-message").hidden = !message; }
+function selectLocated(id: string): void {
+  pauseFollow();
+  if (model.indexOf(id) < 0) {
+    revealedQuery ??= { filter, search, sort }; filter = "all"; search = ""; updateQuery(false);
+  }
+  selectedId = id; virtual.reveal(model.indexOf(id)); updateRows(); renderSelection(); renderNavigation(); rememberSoon();
+  list.focus({ preventScroll: true });
+}
+function selectUnfinished(direction: -1 | 1): void {
+  const id = adjacentUnfinished(model.ids, model.records, model.indexOf(selectedId ?? state?.activeId), direction);
+  if (id) { navigationMessage(); selectLocated(id); }
+}
+function showNumberJump(): void {
+  if (!model.total) return;
+  el("jump-form").hidden = false; const input = el<HTMLInputElement>("video-number"); input.focus(); input.select();
+}
+el("previous-unfinished").addEventListener("click", () => selectUnfinished(-1));
+el("next-unfinished").addEventListener("click", () => selectUnfinished(1));
+el("jump-number").addEventListener("click", showNumberJump);
+el("cancel-jump").addEventListener("click", () => { el("jump-form").hidden = true; navigationMessage(); list.focus(); });
+el("jump-form").addEventListener("submit", event => {
+  event.preventDefault();
+  const input = el<HTMLInputElement>("video-number").value, matches = numberedVideos(model.records.values(), input);
+  if (matches.length !== 1) {
+    navigationMessage(matches.length ? `有 ${matches.length} 个相同编号的视频，请用文件名关键词搜索。` : "没有找到这个文件名编号，请输入文件名开头的数字。");
+    return;
+  }
+  navigationMessage(); el("jump-form").hidden = true; selectLocated(matches[0]!);
+});
+document.addEventListener("keydown", event => {
+  if (event.isComposing || event.altKey) return;
+  if ((event.metaKey || event.ctrlKey) && !event.shiftKey) {
+    const key = event.key.toLowerCase();
+    if (!["f", "l", "j"].includes(key)) return;
+    event.preventDefault();
+    if (key === "f") { const input = el<HTMLInputElement>("search"); input.focus(); input.select(); }
+    else if (key === "l") locateCurrent();
+    else showNumberJump();
+    return;
+  }
+  if (event.key === "Escape" && !el("jump-form").hidden) { event.preventDefault(); el("jump-form").hidden = true; navigationMessage(); list.focus(); }
 });
 el("locate-current").addEventListener("click", () => locateCurrent());
 el("follow-current").addEventListener("click", () => { follow = !follow; if (follow) locateCurrent(false); renderNavigation(); rememberSoon(); });

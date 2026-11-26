@@ -10,5 +10,6 @@ export class SearchInput {
   compositionStart(): void { this.composing = true; this.cancel(); }
   compositionEnd(): void { this.composing = false; this.input(); }
   flush(): void { this.cancel(); if (!this.composing) this.apply(); }
+  reset(): void { this.cancel(); this.composing = false; }
   cancel(): void { if (this.timer !== undefined) clearTimeout(this.timer); this.timer = undefined; }
 }

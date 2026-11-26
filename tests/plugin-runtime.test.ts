@@ -13,7 +13,7 @@ beforeAll(async () => {
   [globalCode, mainCode] = await Promise.all([bundle("src/global.ts"), bundle("src/main.ts")]);
 });
 
-function runtime(options: { loadEvents?: boolean } = {}) {
+function runtime(options: { loadEvents?: boolean; unavailableFolder?: string } = {}) {
   const files = new Map<string, string>();
   const globalHandlers = new Map<string, (data: unknown, player: string) => void>();
   const childHandlers = new Map<string, (data: unknown) => void>();
@@ -50,7 +50,10 @@ function runtime(options: { loadEvents?: boolean } = {}) {
     exists: (path: string) => path.startsWith("/Course/") || files.has(path),
     read: (path: string) => files.get(path),
     write: (path: string, text: string) => { writes++; files.set(path, text); },
-    list: (path: string) => { scans.push(path); return ["01.mp4", "02.mp4", "03.mp4"].map(filename => ({ filename, path: `/${filename}`, isDir: false })); },
+    list: (path: string) => {
+      scans.push(path); if (path === options.unavailableFolder) throw new Error("Folder offline");
+      return ["01.mp4", "02.mp4", "03.mp4"].map(filename => ({ filename, path: `/${filename}`, isDir: false }));
+    },
     showInFinder() {},
   };
   vm.runInNewContext(globalCode, {
@@ -184,6 +187,23 @@ describe("bundled IINA main/global integration", () => {
     app.action({ type: "folder", path: "/Other" }); expect(app.state().selectedFolder).toBe("/Other");
     app.action({ type: "locate-current" }); expect(app.state().selectedFolder).toBe("/Course");
     expect(app.state().activeId).toBe(mediaId("/Course/01.mp4")); expect(app.commands).toEqual([]); expect(app.plays).toEqual([]);
+  });
+  it("browses a remembered local folder outside the playlist without changing playback", () => {
+    const app = runtime();
+    app.action({ type: "folder", path: "/Remembered" });
+    expect(app.state().selectedFolder).toBe("/Remembered"); expect(app.state().items).toHaveLength(3);
+    expect(app.state().activeId).toBe(mediaId("/Course/01.mp4"));
+    expect(app.commands).toEqual([]); expect(app.plays).toEqual([]);
+    app.action({ type: "folder", path: "https://example.com/video" });
+    app.action({ type: "folder", path: "relative/path" });
+    expect(app.state().selectedFolder).toBe("/Remembered");
+    app.action({ type: "locate-current" }); expect(app.state().selectedFolder).toBe("/Course");
+  });
+  it("keeps the current folder and playback when a remembered folder is offline", () => {
+    const app = runtime({ unavailableFolder: "/Offline" });
+    app.action({ type: "folder", path: "/Offline" });
+    expect(app.state().selectedFolder).toBe("/Course"); expect(app.state().scanError).toContain("offline");
+    expect(app.state().videos).toHaveLength(3); expect(app.plays).toEqual([]); expect(app.commands).toEqual([]);
   });
   it("changes the global checkpoint interval without extra idle writes and still saves pauses immediately", () => {
     const app = runtime();

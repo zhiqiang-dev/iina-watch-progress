@@ -26,7 +26,11 @@ export class VirtualVideoList {
     viewport.addEventListener("scroll", () => this.schedule(), { passive: true });
     this.resize = new ResizeObserver(() => this.schedule()); this.resize.observe(viewport);
   }
-  update(flags: PlaybackView): void { this.flags = flags; this.schedule(); }
+  update(flags: PlaybackView, changedIds?: string[]): void {
+    const flagsChanged = flags.selectedId !== this.flags.selectedId || flags.activeId !== this.flags.activeId || flags.paused !== this.flags.paused;
+    this.flags = flags;
+    if (flagsChanged || changedIds === undefined || changedIds.some(id => this.rows.has(id))) this.schedule();
+  }
   setVisible(visible: boolean): void {
     this.visible = visible;
     if (!visible && this.frame !== undefined) { cancelAnimationFrame(this.frame); this.frame = undefined; }

@@ -20,5 +20,7 @@ describe("search input scheduling", () => {
     vi.useFakeTimers(); const apply = vi.fn(), search = new SearchInput(apply);
     search.input(); search.flush(); vi.advanceTimersByTime(1000); expect(apply).toHaveBeenCalledTimes(1);
     search.input(); search.cancel(); vi.advanceTimersByTime(1000); expect(apply).toHaveBeenCalledTimes(1);
+    search.compositionStart(); search.input(); search.reset();
+    search.input(); vi.advanceTimersByTime(150); expect(apply).toHaveBeenCalledTimes(2);
   });
 });

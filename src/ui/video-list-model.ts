@@ -11,6 +11,7 @@ export class VideoListModel {
   watching = 0;
   fullSorts = 0;
   orderRevision = 0;
+  navigationRevision = 0;
   moves = 0;
   private orderedIds?: string[];
   private positions = new Map<string, number>();
@@ -47,7 +48,7 @@ export class VideoListModel {
       if (!old || old === record) continue;
       const wasVisible = this.matches(old), isVisible = this.matches(record);
       this.records.set(record.id, record);
-      if (old.status !== record.status) { this.count(old, -1); this.count(record, 1); }
+      if (old.status !== record.status) { this.count(old, -1); this.count(record, 1); this.navigationRevision++; }
       if (record.id === this.continueId) {
         if (record.status === "completed" || record.lastPlayedAt < old.lastPlayedAt || record.fileName !== old.fileName) this.findContinue();
       } else if (record.status !== "completed" && (!this.continueRecord || this.compareContinue(record, this.continueRecord) < 0)) this.continueId = record.id;
@@ -73,7 +74,7 @@ export class VideoListModel {
       }
       const from = previousIndex < 0 ? insertedIndex : Math.min(previousIndex, insertedIndex);
       for (let index = from; index < this.ids.length; index++) this.positions.set(this.ids[index]!, index);
-      this.orderRevision++; this.moves++;
+      this.orderRevision++; this.navigationRevision++; this.moves++;
     }
   }
   private matches(record: VideoRecord): boolean {
@@ -107,6 +108,6 @@ export class VideoListModel {
       this.orderedIds = [...this.records.values()].sort((a, b) => this.compare(a, b)).map(record => record.id);
     }
     this.ids = this.orderedIds.filter(id => this.matches(this.records.get(id)!));
-    this.positions.clear(); this.ids.forEach((id, index) => this.positions.set(id, index)); this.orderRevision++;
+    this.positions.clear(); this.ids.forEach((id, index) => this.positions.set(id, index)); this.orderRevision++; this.navigationRevision++;
   }
 }
