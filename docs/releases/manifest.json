@@ -28,6 +28,15 @@
       "sha256": "f9aecc9691a96c03b5b11ae0e753c449c088b0c4d2c0f1b0ccc9baf7c7ea477e",
       "bytes": 30283,
       "tests": 92
+    },
+    {
+      "version": "0.1.4",
+      "tag": "v0.1.4",
+      "sourceCommit": "fda81d5a55ba559b9ddc4031cc498aa3482f57f4",
+      "artifact": "iina-watch-progress-0.1.4.iinaplgz",
+      "sha256": "f8876a1af479b377d6b15d8d5b7e8b96dbe6594731b849f6c8f83bd84a08f6a1",
+      "bytes": 32728,
+      "tests": 109
     }
   ]
 }
